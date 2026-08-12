@@ -7,7 +7,7 @@ import 'sellora_tokens.dart';
 export 'sellora_tokens.dart'
     show SelloraTokens, Gap, Radii, SelloraThemeContext;
 
-/// The "Sellora" wordmark. The only place serif is used.
+/// The "Sellora" wordmark.
 class SelloraWordmark extends StatelessWidget {
   const SelloraWordmark({super.key, this.size = 20, this.color});
 
@@ -21,8 +21,11 @@ class SelloraWordmark extends StatelessWidget {
       style: TextStyle(
         fontFamily: kBrandFontFamily,
         fontSize: size,
-        fontWeight: FontWeight.w900,
-        letterSpacing: -0.5,
+        // w800 is the heaviest cut bundled. Asking for w900 would make Flutter
+        // synthesise a fake bold on top of it, which smears the letterforms.
+        fontWeight: FontWeight.w800,
+        letterSpacing: -0.8,
+        height: 1.1,
         color: color ?? context.t.ink,
       ),
     );

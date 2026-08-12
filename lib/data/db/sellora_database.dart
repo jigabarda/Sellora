@@ -7,20 +7,42 @@ class SelloraDatabase {
   SelloraDatabase._();
 
   static const _fileName = 'sellora.db';
-  static const _version = 4;
+  static const _version = 5;
 
   static Future<Database> open() async {
     final dir = await getApplicationDocumentsDirectory();
     final path = p.join(dir.path, _fileName);
+    return databaseFactory.openDatabase(path, options: openOptions());
+  }
 
-    return openDatabase(
-      path,
+  /// How the app opens its database.
+  ///
+  /// Extracted so the migration test can upgrade a real file through the exact
+  /// production path. Driving [migrate] directly cannot prove the upgrade is
+  /// safe, because the pragma sequence below is the entire safety mechanism.
+  static OpenDatabaseOptions openOptions() {
+    return OpenDatabaseOptions(
       version: _version,
+      // Foreign keys are deliberately OFF here and switched back ON in
+      // `onOpen`.
+      //
+      // Migrations that change a table's shape have to rebuild it, and with
+      // enforcement on, `DROP TABLE users` performs an implicit delete of
+      // every row — which fires `businesses.user_id ON DELETE CASCADE` and
+      // takes the user's entire dataset with it. SQLite's own documented
+      // rebuild procedure requires the pragma off for exactly this reason,
+      // and it cannot be toggled from inside `onUpgrade`, because sqflite runs
+      // that in a transaction where the statement is silently a no-op. The
+      // window is only ever open during create and upgrade; the app itself
+      // never sees an unenforced database.
       onConfigure: (db) async {
-        await db.execute('PRAGMA foreign_keys = ON');
+        await db.execute('PRAGMA foreign_keys = OFF');
       },
       onCreate: (db, version) => createSchema(db),
       onUpgrade: (db, oldVersion, newVersion) => migrate(db, oldVersion),
+      onOpen: (db) async {
+        await db.execute('PRAGMA foreign_keys = ON');
+      },
     );
   }
 
@@ -55,6 +77,76 @@ class SelloraDatabase {
         'ALTER TABLE products ADD COLUMN track_stock INTEGER NOT NULL DEFAULT 1',
       );
     }
+    // Guarded on oldVersion >= 3 for the same reason as above: a database
+    // older than that had `users` created by `_createUsers` a moment ago,
+    // which already declares `username` and has no `email` to convert.
+    if (oldVersion >= 3 && oldVersion < 5) {
+      await _replaceUserEmailsWithUsernames(db);
+    }
+  }
+
+  /// Rebuilds `users` so accounts are identified by a username instead of an
+  /// email address, deriving each existing username from the local part of the
+  /// address it replaces.
+  ///
+  /// A rebuild is unavoidable: `email` is `NOT NULL UNIQUE`, and SQLite cannot
+  /// drop a column carrying a unique constraint. The create/copy/drop/rename
+  /// order matters — dropping the old table only after the new one is
+  /// populated, and renaming last, is what leaves `businesses.user_id`
+  /// pointing at a table that still exists under the name its foreign key
+  /// declares. Requires foreign keys to be off; see [open].
+  static Future<void> _replaceUserEmailsWithUsernames(Database db) async {
+    final existing = await db.query('users', orderBy: 'created_at ASC');
+
+    await _createUsers(db, table: 'users_new');
+
+    // Two accounts can easily share a local part — james@gmail.com and
+    // james@work.com both want "james" — so the first one registered keeps it
+    // and the rest are suffixed. Ordering by created_at makes which is which
+    // deterministic rather than dependent on row order.
+    final taken = <String>{};
+    for (final row in existing) {
+      final username = _uniqueUsername(
+        usernameFromEmail(row['email'] as String?),
+        taken,
+      );
+      taken.add(username);
+      await db.insert('users_new', {
+        'id': row['id'],
+        'username': username,
+        'name': row['name'],
+        'salt': row['salt'],
+        'password_hash': row['password_hash'],
+        'created_at': row['created_at'],
+      });
+    }
+
+    await db.execute('DROP TABLE users');
+    await db.execute('ALTER TABLE users_new RENAME TO users');
+  }
+
+  /// Derives a username from an email address.
+  ///
+  /// Public for the migration test, which needs to assert the derivation
+  /// separately from the table rebuild.
+  static String usernameFromEmail(String? email) {
+    final local = (email ?? '').split('@').first.toLowerCase();
+    final cleaned = local.replaceAll(RegExp(r'[^a-z0-9._]'), '');
+    final trimmed = cleaned.replaceAll(RegExp(r'^[._]+|[._]+$'), '');
+    // Falls back rather than failing: an address that sanitises down to
+    // nothing usable must still end up with a working account.
+    if (trimmed.length < 3) return 'owner';
+    // Truncated with room for a dedup suffix, so appending one below cannot
+    // push the result past what the account form itself accepts.
+    return trimmed.length > 16 ? trimmed.substring(0, 16) : trimmed;
+  }
+
+  static String _uniqueUsername(String base, Set<String> taken) {
+    if (!taken.contains(base)) return base;
+    for (var i = 2;; i++) {
+      final candidate = '$base$i';
+      if (!taken.contains(candidate)) return candidate;
+    }
   }
 
   /// Builds the full schema on a fresh database.
@@ -67,11 +159,17 @@ class SelloraDatabase {
     await _createOperationalTables(db);
   }
 
-  static Future<void> _createUsers(Database db) async {
+  /// [table] exists so the v5 migration can build an identically shaped
+  /// `users_new` before swapping it into place.
+  ///
+  /// `username` is stored already lowercased by `AuthController`, so a plain
+  /// UNIQUE index is enough to stop two accounts differing only in case.
+  static Future<void> _createUsers(Database db,
+      {String table = 'users'}) async {
     await db.execute('''
-CREATE TABLE IF NOT EXISTS users (
+CREATE TABLE IF NOT EXISTS $table (
   id TEXT NOT NULL PRIMARY KEY,
-  email TEXT NOT NULL UNIQUE,
+  username TEXT NOT NULL UNIQUE,
   name TEXT NOT NULL,
   salt TEXT NOT NULL,
   password_hash TEXT NOT NULL,

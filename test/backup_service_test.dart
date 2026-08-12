@@ -8,10 +8,10 @@ import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 /// Seeds one account with two businesses and a full sale so the test exercises
 /// every foreign key the restore path has to unwind and rebuild.
 Future<void> _seed(Database db,
-    {required String userId, required String email}) async {
+    {required String userId, required String username}) async {
   await db.insert('users', {
     'id': userId,
-    'email': email,
+    'username': username,
     'name': 'Test Owner',
     'salt': 'salt',
     'password_hash': 'hash',
@@ -135,12 +135,12 @@ void main() {
   tearDown(() async => db.close());
 
   test('export captures every table for the account', () async {
-    await _seed(db, userId: 'usr_1', email: 'owner@test.com');
+    await _seed(db, userId: 'usr_1', username: 'owner');
 
     final summary = await service.inspect(await service.exportToJson('usr_1'));
 
     expect(summary.userId, 'usr_1');
-    expect(summary.userEmail, 'owner@test.com');
+    expect(summary.username, 'owner');
     expect(summary.businesses, 2);
     expect(summary.products, 1);
     expect(summary.sales, 1);
@@ -153,7 +153,7 @@ void main() {
   });
 
   test('restore into an empty database rebuilds everything', () async {
-    await _seed(db, userId: 'usr_1', email: 'owner@test.com');
+    await _seed(db, userId: 'usr_1', username: 'owner');
     final backup = await service.exportToJson('usr_1');
 
     // Wipe the account the way a fresh install would look.
@@ -187,7 +187,7 @@ void main() {
 
   test('restore over existing data replaces it instead of duplicating',
       () async {
-    await _seed(db, userId: 'usr_1', email: 'owner@test.com');
+    await _seed(db, userId: 'usr_1', username: 'owner');
     final backup = await service.exportToJson('usr_1');
 
     // Activity after the backup was taken; restoring must roll it back.
@@ -209,8 +209,8 @@ void main() {
   });
 
   test('restore leaves another local account untouched', () async {
-    await _seed(db, userId: 'usr_1', email: 'owner@test.com');
-    await _seed(db, userId: 'usr_2', email: 'other@test.com');
+    await _seed(db, userId: 'usr_1', username: 'owner');
+    await _seed(db, userId: 'usr_2', username: 'other');
     final backup = await service.exportToJson('usr_1');
 
     await service.restore(backup);
@@ -224,7 +224,7 @@ void main() {
   });
 
   test('a failed restore leaves current data intact', () async {
-    await _seed(db, userId: 'usr_1', email: 'owner@test.com');
+    await _seed(db, userId: 'usr_1', username: 'owner');
     final envelope =
         jsonDecode(await service.exportToJson('usr_1')) as Map<String, Object?>;
 
@@ -260,7 +260,7 @@ void main() {
   });
 
   test('rejects a backup from a newer schema', () async {
-    await _seed(db, userId: 'usr_1', email: 'owner@test.com');
+    await _seed(db, userId: 'usr_1', username: 'owner');
     final envelope =
         jsonDecode(await service.exportToJson('usr_1')) as Map<String, Object?>;
     envelope['schemaVersion'] = backupSchemaVersion + 1;
@@ -271,14 +271,14 @@ void main() {
     );
   });
 
-  test('refuses when another account already owns the email', () async {
-    await _seed(db, userId: 'usr_1', email: 'owner@test.com');
+  test('refuses when another account already owns the username', () async {
+    await _seed(db, userId: 'usr_1', username: 'owner');
     final backup = await service.exportToJson('usr_1');
 
     await db.delete('businesses', where: 'user_id = ?', whereArgs: ['usr_1']);
     await db.delete('users', where: 'id = ?', whereArgs: ['usr_1']);
-    // Same email, different id — the UNIQUE index would blow up mid-restore.
-    await _seed(db, userId: 'usr_other', email: 'owner@test.com');
+    // Same username, different id — the UNIQUE index would blow up mid-restore.
+    await _seed(db, userId: 'usr_other', username: 'owner');
 
     await expectLater(service.restore(backup), throwsA(isA<BackupException>()));
   });

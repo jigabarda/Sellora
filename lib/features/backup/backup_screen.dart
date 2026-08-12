@@ -158,7 +158,7 @@ class _BackupScreenState extends ConsumerState<BackupScreen> {
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             Text(
-              'This backup belongs to ${summary.userEmail} and contains:',
+              'This backup belongs to @${summary.username} and contains:',
               style: dialogContext.text.bodyMedium,
             ),
             Gap.h12,

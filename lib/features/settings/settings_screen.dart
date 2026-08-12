@@ -104,10 +104,11 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
             ),
             Gap.h16,
             TextFormField(
-              initialValue: user.email,
+              initialValue: user.username,
               enabled: false,
               decoration: const InputDecoration(
-                labelText: 'Email',
+                labelText: 'Username',
+                prefixText: '@',
                 helperText:
                     'Identifies this local account and cannot be changed.',
               ),

@@ -66,13 +66,13 @@ class BackupException implements Exception {
 class BackupSummary {
   const BackupSummary({
     required this.userId,
-    required this.userEmail,
+    required this.username,
     required this.exportedAt,
     required this.counts,
   });
 
   final String userId;
-  final String userEmail;
+  final String username;
   final DateTime exportedAt;
   final Map<String, int> counts;
 
@@ -182,7 +182,7 @@ WHERE s.business_id IN ($placeholders)
 
     return BackupSummary(
       userId: users.first['id']! as String,
-      userEmail: (users.first['email'] as String?) ?? '',
+      username: (users.first['username'] as String?) ?? '',
       exportedAt: DateTime.fromMillisecondsSinceEpoch(
         (envelope['exportedAt'] as num?)?.toInt() ?? 0,
       ),
@@ -206,20 +206,20 @@ WHERE s.business_id IN ($placeholders)
       throw BackupException('Backup does not contain an account record.');
     }
     final restoredUserId = users.first['id']! as String;
-    final restoredEmail = (users.first['email'] as String?) ?? '';
+    final restoredUsername = (users.first['username'] as String?) ?? '';
 
-    // A different local account already owning this email would violate the
-    // UNIQUE constraint halfway through the restore. Fail early with a message
-    // the user can act on instead of a raw SQLite error.
-    final emailClash = await _db.query(
+    // A different local account already holding this username would violate
+    // the UNIQUE constraint halfway through the restore. Fail early with a
+    // message the user can act on instead of a raw SQLite error.
+    final usernameClash = await _db.query(
       'users',
-      where: 'email = ? AND id != ?',
-      whereArgs: [restoredEmail, restoredUserId],
+      where: 'username = ? AND id != ?',
+      whereArgs: [restoredUsername, restoredUserId],
       limit: 1,
     );
-    if (emailClash.isNotEmpty) {
+    if (usernameClash.isNotEmpty) {
       throw BackupException(
-        'A different local account already uses $restoredEmail. '
+        'A different local account already uses @$restoredUsername. '
         'Sign in to that account and restore from there, or clear app data first.',
       );
     }

@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import 'brand_palette.dart';
+
 /// Design tokens for the app, delivered through the theme so every surface
 /// adapts to light and dark automatically.
 ///
@@ -49,10 +51,18 @@ class SelloraTokens extends ThemeExtension<SelloraTokens> {
   /// Tertiary text, placeholders, disabled.
   final Color faint;
 
-  /// Brand accent. Deliberately not green or red so it never competes with
-  /// the success and danger semantics.
+  /// Brand accent, chosen by the user in Settings. The value baked into
+  /// [light] and [dark] is only the default; [withPalette] replaces it.
+  ///
+  /// A palette may well land on a green or a red, which is why nothing in the
+  /// app is allowed to signal success or failure through the accent alone.
   final Color accent;
+
+  /// Tinted background for accent chips and selected rows. Derived from
+  /// [accent] rather than stored per palette.
   final Color accentSoft;
+
+  /// Text and icons drawn on top of [accent].
   final Color onAccent;
 
   final Color success;
@@ -101,6 +111,28 @@ class SelloraTokens extends ThemeExtension<SelloraTokens> {
     warning: Color(0xFFE0A05A),
     warningSoft: Color(0xFF33240F),
   );
+
+  /// Recolours the accent trio for the user's branding choice.
+  ///
+  /// `accentSoft` and `onAccent` are computed instead of stored per palette so
+  /// adding a palette only ever means picking two colours. The soft tint is
+  /// composited over [surface] because that is what it actually sits on, and
+  /// the luminance test picks whichever of ink or white stays readable on the
+  /// accent — a light amber needs dark text where an indigo needs white.
+  SelloraTokens withPalette(BrandPalette palette, Brightness brightness) {
+    final accent = palette.accentFor(brightness);
+    final isDark = brightness == Brightness.dark;
+    return copyWith(
+      accent: accent,
+      accentSoft: Color.alphaBlend(
+        accent.withValues(alpha: isDark ? 0.22 : 0.12),
+        surface,
+      ),
+      onAccent: accent.computeLuminance() > 0.55
+          ? const Color(0xFF14140F)
+          : const Color(0xFFFFFFFF),
+    );
+  }
 
   @override
   SelloraTokens copyWith({
