@@ -1,0 +1,385 @@
+import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
+
+import '../../core/dates.dart';
+import '../../core/money.dart';
+import '../../core/sellora_ui.dart';
+import '../../data/models/entities.dart';
+import '../../providers.dart';
+
+class DashboardScreen extends ConsumerWidget {
+  const DashboardScreen({super.key, required this.businessId});
+
+  final String businessId;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final stats = ref.watch(dashboardStatsProvider(businessId));
+    final sales = ref.watch(salesProvider(businessId));
+
+    return RefreshIndicator(
+      onRefresh: () async {
+        ref.invalidate(businessProvider(businessId));
+        ref.invalidate(dashboardStatsProvider(businessId));
+        ref.invalidate(salesProvider(businessId));
+        await ref.read(dashboardStatsProvider(businessId).future);
+      },
+      child: ListView(
+        padding: const EdgeInsets.fromLTRB(Gap.lg, Gap.md, Gap.lg, 40),
+        children: [
+          stats.when(
+            loading: () => const Padding(
+              padding: EdgeInsets.symmetric(vertical: 40),
+              child: LoadingView(),
+            ),
+            error: (e, _) => ErrorView(
+              error: e,
+              onRetry: () => ref.invalidate(dashboardStatsProvider(businessId)),
+            ),
+            data: (s) => _StatsGrid(stats: s, businessId: businessId),
+          ),
+          Gap.h16,
+          sales.when(
+            loading: () => const SizedBox.shrink(),
+            error: (_, __) => const SizedBox.shrink(),
+            data: (list) => Column(
+              children: [
+                _ProductPerformanceCard(sales: list),
+                Gap.h12,
+                _RecentSalesCard(businessId: businessId, sales: list),
+                Gap.h12,
+                _QuickActionsCard(businessId: businessId),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _StatsGrid extends StatelessWidget {
+  const _StatsGrid({required this.stats, required this.businessId});
+
+  final DashboardStats stats;
+  final String businessId;
+
+  @override
+  Widget build(BuildContext context) {
+    final t = context.t;
+
+    return Column(
+      children: [
+        // Today's takings is the number owners open the app for, so it gets
+        // the full-width treatment.
+        SelloraCard(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Text("Today's sales", style: context.text.labelSmall),
+                  const Spacer(),
+                  SelloraPill(
+                    label: '${stats.transactions} all-time',
+                    tone: PillTone.neutral,
+                  ),
+                ],
+              ),
+              Gap.h8,
+              Text(formatPhp(stats.todaySales),
+                  style: context.text.displaySmall),
+              Gap.h4,
+              Text(
+                'This week: ${formatPhp(stats.weekSales)}',
+                style: context.text.bodyMedium,
+              ),
+            ],
+          ),
+        ),
+        Gap.h12,
+        Row(
+          children: [
+            Expanded(
+              child: _SmallStat(
+                label: 'Active products',
+                value: '${stats.activeProducts}',
+                icon: Icons.inventory_2_outlined,
+                onTap: () => context.go('/business/$businessId/products'),
+              ),
+            ),
+            Gap.w12,
+            Expanded(
+              child: _SmallStat(
+                label: 'Low stock',
+                value: '${stats.lowStockCount}',
+                icon: Icons.trending_down,
+                tone: stats.lowStockCount > 0 ? t.warning : null,
+                onTap: () => context.push('/business/$businessId/inventory'),
+              ),
+            ),
+          ],
+        ),
+      ],
+    );
+  }
+}
+
+class _SmallStat extends StatelessWidget {
+  const _SmallStat({
+    required this.label,
+    required this.value,
+    required this.icon,
+    required this.onTap,
+    this.tone,
+  });
+
+  final String label;
+  final String value;
+  final IconData icon;
+  final VoidCallback onTap;
+  final Color? tone;
+
+  @override
+  Widget build(BuildContext context) {
+    return SelloraCard(
+      onTap: onTap,
+      padding: const EdgeInsets.all(Gap.md),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(icon, size: 17, color: tone ?? context.t.muted),
+          Gap.h8,
+          Text(value, style: context.text.headlineSmall?.copyWith(color: tone)),
+          Text(label, style: context.text.labelSmall),
+        ],
+      ),
+    );
+  }
+}
+
+class _ProductPerformanceCard extends StatelessWidget {
+  const _ProductPerformanceCard({required this.sales});
+
+  final List<Sale> sales;
+
+  @override
+  Widget build(BuildContext context) {
+    final t = context.t;
+    final rows = _performanceRows(sales).take(4).toList();
+    final maxRevenue = rows.isEmpty ? 0.0 : rows.first.revenue;
+
+    return SelloraCard(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          const SectionHeader(
+            icon: Icons.bar_chart,
+            title: 'Product performance',
+            subtitle: 'Revenue by product, all time',
+          ),
+          Gap.h16,
+          if (rows.isEmpty)
+            Padding(
+              padding: const EdgeInsets.symmetric(vertical: Gap.lg),
+              child: Center(
+                child: Text('No product sales yet',
+                    style: context.text.bodyMedium),
+              ),
+            )
+          else
+            for (var i = 0; i < rows.length; i++) ...[
+              if (i > 0) Gap.h12,
+              Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      rows[i].name,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: context.text.bodyLarge
+                          ?.copyWith(fontWeight: FontWeight.w600),
+                    ),
+                  ),
+                  Gap.w8,
+                  Text(formatPhp(rows[i].revenue),
+                      style: context.text.titleSmall),
+                ],
+              ),
+              const SizedBox(height: 3),
+              Row(
+                children: [
+                  Expanded(
+                    child: ClipRRect(
+                      borderRadius: BorderRadius.circular(Radii.pill),
+                      child: LinearProgressIndicator(
+                        minHeight: 5,
+                        value:
+                            maxRevenue == 0 ? 0 : rows[i].revenue / maxRevenue,
+                        backgroundColor: t.surfaceAlt,
+                        valueColor: AlwaysStoppedAnimation(t.accent),
+                      ),
+                    ),
+                  ),
+                  Gap.w8,
+                  Text(
+                    '${rows[i].quantity} sold',
+                    style: context.text.labelSmall,
+                  ),
+                ],
+              ),
+            ],
+        ],
+      ),
+    );
+  }
+
+  static List<_PerformanceRow> _performanceRows(List<Sale> sales) {
+    final map = <String, _PerformanceRow>{};
+    for (final sale in sales) {
+      for (final line in sale.lines) {
+        final current = map[line.name] ?? _PerformanceRow(line.name, 0, 0);
+        map[line.name] = _PerformanceRow(
+          line.name,
+          current.quantity + line.qty,
+          current.revenue + (line.qty * line.unitPrice),
+        );
+      }
+    }
+    final rows = map.values.toList();
+    rows.sort((a, b) => b.revenue.compareTo(a.revenue));
+    return rows;
+  }
+}
+
+class _RecentSalesCard extends ConsumerWidget {
+  const _RecentSalesCard({required this.businessId, required this.sales});
+
+  final String businessId;
+  final List<Sale> sales;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final t = context.t;
+    final recent = sales.take(4).toList();
+    // Resolve real customer names rather than labelling everything walk-in.
+    final customerNames = {
+      for (final c
+          in ref.watch(customersProvider(businessId)).valueOrNull ?? const [])
+        c.id: c.name,
+    };
+
+    return SelloraCard(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          SectionHeader(
+            icon: Icons.receipt_long_outlined,
+            title: 'Recent sales',
+            subtitle: 'Latest transactions',
+            trailing: TextButton(
+              onPressed: () => context.go('/business/$businessId/sales'),
+              child: const Text('View all'),
+            ),
+          ),
+          Gap.h12,
+          if (recent.isEmpty)
+            Padding(
+              padding: const EdgeInsets.symmetric(vertical: Gap.lg),
+              child: Center(
+                child: Text('No sales yet', style: context.text.bodyMedium),
+              ),
+            )
+          else
+            for (final sale in recent)
+              Padding(
+                padding: const EdgeInsets.only(bottom: Gap.sm),
+                child: Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: Gap.md,
+                    vertical: Gap.md,
+                  ),
+                  decoration: BoxDecoration(
+                    color: t.surfaceAlt,
+                    borderRadius: BorderRadius.circular(Radii.md),
+                  ),
+                  child: Row(
+                    children: [
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              customerNames[sale.customerId] ?? 'Walk-in',
+                              style: context.text.bodyLarge
+                                  ?.copyWith(fontWeight: FontWeight.w600),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                            Text(
+                              formatTimestamp(sale.createdAt),
+                              style: context.text.labelSmall,
+                            ),
+                          ],
+                        ),
+                      ),
+                      Text(formatPhp(sale.total),
+                          style: context.text.titleSmall),
+                    ],
+                  ),
+                ),
+              ),
+        ],
+      ),
+    );
+  }
+}
+
+class _QuickActionsCard extends StatelessWidget {
+  const _QuickActionsCard({required this.businessId});
+
+  final String businessId;
+
+  @override
+  Widget build(BuildContext context) {
+    return SelloraCard(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          const SectionHeader(
+            icon: Icons.bolt_outlined,
+            title: 'Quick actions',
+            subtitle: 'Common tasks',
+          ),
+          Gap.h16,
+          FilledButton.icon(
+            onPressed: () => context.push('/business/$businessId/sales/new'),
+            icon: const Icon(Icons.add_shopping_cart, size: 18),
+            label: const Text('Record a sale'),
+          ),
+          Gap.h8,
+          OutlinedButton.icon(
+            onPressed: () => context.push('/business/$businessId/products/new'),
+            icon: const Icon(Icons.add, size: 18),
+            label: const Text('Add a product'),
+          ),
+          Gap.h8,
+          OutlinedButton.icon(
+            onPressed: () => context.push('/business/$businessId/expenses/new'),
+            icon: const Icon(Icons.receipt_long_outlined, size: 18),
+            label: const Text('Record an expense'),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _PerformanceRow {
+  const _PerformanceRow(this.name, this.quantity, this.revenue);
+
+  final String name;
+  final int quantity;
+  final double revenue;
+}

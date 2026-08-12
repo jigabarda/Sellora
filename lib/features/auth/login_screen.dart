@@ -1,0 +1,149 @@
+import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
+
+import '../../core/sellora_ui.dart';
+import '../../data/auth/auth_controller.dart';
+import '../../providers.dart';
+
+class LoginScreen extends ConsumerStatefulWidget {
+  const LoginScreen({super.key});
+
+  @override
+  ConsumerState<LoginScreen> createState() => _LoginScreenState();
+}
+
+class _LoginScreenState extends ConsumerState<LoginScreen> {
+  final _formKey = GlobalKey<FormState>();
+  final _email = TextEditingController();
+  final _password = TextEditingController();
+  bool _busy = false;
+  bool _obscure = true;
+
+  @override
+  void dispose() {
+    _email.dispose();
+    _password.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back, size: 22),
+          onPressed: () => context.go('/welcome'),
+        ),
+      ),
+      body: SafeArea(
+        child: Center(
+          child: SingleChildScrollView(
+            padding: const EdgeInsets.fromLTRB(Gap.lg, Gap.sm, Gap.lg, Gap.xl),
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 460),
+              child: Form(
+                key: _formKey,
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    const SelloraWordmark(size: 26),
+                    Gap.h24,
+                    Text('Welcome back', style: context.text.headlineMedium),
+                    Gap.h4,
+                    Text(
+                      'Sign in to the account stored on this device.',
+                      style: context.text.bodyMedium,
+                    ),
+                    Gap.h24,
+                    TextFormField(
+                      controller: _email,
+                      keyboardType: TextInputType.emailAddress,
+                      autofillHints: const [AutofillHints.email],
+                      textInputAction: TextInputAction.next,
+                      decoration: const InputDecoration(
+                        labelText: 'Email',
+                        hintText: 'you@example.com',
+                      ),
+                      validator: (v) {
+                        if (v == null || v.trim().isEmpty) {
+                          return 'Enter your email';
+                        }
+                        if (!v.contains('@')) return 'Enter a valid email';
+                        return null;
+                      },
+                    ),
+                    Gap.h12,
+                    TextFormField(
+                      controller: _password,
+                      obscureText: _obscure,
+                      autofillHints: const [AutofillHints.password],
+                      textInputAction: TextInputAction.done,
+                      onFieldSubmitted: (_) => _busy ? null : _submit(),
+                      decoration: InputDecoration(
+                        labelText: 'Password',
+                        suffixIcon: IconButton(
+                          icon: Icon(
+                            _obscure
+                                ? Icons.visibility_outlined
+                                : Icons.visibility_off_outlined,
+                            size: 20,
+                          ),
+                          onPressed: () => setState(() => _obscure = !_obscure),
+                        ),
+                      ),
+                      validator: (v) => (v == null || v.isEmpty)
+                          ? 'Enter your password'
+                          : null,
+                    ),
+                    Gap.h24,
+                    FilledButton(
+                      onPressed: _busy ? null : _submit,
+                      child:
+                          _busy ? const ButtonSpinner() : const Text('Sign in'),
+                    ),
+                    Gap.h16,
+                    // Wrap, not Row: at a large text scale the label and the
+                    // button together exceed a phone's width.
+                    Wrap(
+                      alignment: WrapAlignment.center,
+                      crossAxisAlignment: WrapCrossAlignment.center,
+                      children: [
+                        Text("Don't have an account?",
+                            style: context.text.bodyMedium),
+                        TextButton(
+                          onPressed: () => context.push('/register'),
+                          child: const Text('Sign up'),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Future<void> _submit() async {
+    if (!_formKey.currentState!.validate()) return;
+    setState(() => _busy = true);
+    try {
+      await ref.read(authControllerProvider.notifier).login(
+            email: _email.text,
+            password: _password.text,
+          );
+      if (!mounted) return;
+      context.go('/');
+    } on AuthException catch (e) {
+      if (mounted) showToast(context, e.message, isError: true);
+    } catch (e) {
+      if (mounted) showToast(context, 'Login failed: $e', isError: true);
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+}

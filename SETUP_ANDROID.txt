@@ -1,0 +1,32 @@
+Sellora Mobile — first-time Android / offline setup
+===================================================
+
+Prerequisites (Windows)
+-----------------------
+1) Install Flutter (stable) and add it to PATH: https://docs.flutter.dev/get-started/install/windows
+2) Install Android Studio + Android SDK + an emulator or a physical device with USB debugging.
+
+Generate Android (and Gradle) project files
+-------------------------------------------
+This repo ships Dart sources + pubspec only. From this folder run ONCE:
+
+  flutter create . --project-name sellora_mobile --org com.sellora.app --platforms=android
+
+Flutter will create the `android/` folder and Gradle wrapper. It keeps your existing `lib/` and merges pubspec if needed — review `pubspec.yaml` after.
+
+Then:
+
+  flutter pub get
+  flutter run
+
+Data & offline
+--------------
+- All business data is stored in a SQLite file under the app documents directory (see `SelloraDatabase`).
+- No network calls are required to open the app or record data.
+- The template does not declare INTERNET in AndroidManifest; add it later only if you integrate sync, maps, or analytics.
+
+Schema
+------
+The local database is version **3** and adds **users** (email + salted password hash), ties **businesses** to `user_id`, plus products, customers, sales, stock ledger, expenses, and refunds.
+The app opens on a **landing / sign-in** flow; create a local account before businesses appear.
+If you previously installed an older prototype on an emulator/device, keep the app data to auto-migrate — or uninstall the app to reset the database during development.
