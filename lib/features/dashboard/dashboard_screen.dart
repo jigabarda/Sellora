@@ -72,28 +72,56 @@ class _StatsGrid extends StatelessWidget {
     return Column(
       children: [
         // Today's takings is the number owners open the app for, so it gets
-        // the full-width treatment.
+        // the full-width treatment and the only saturated surface on the
+        // screen. Everything below stays quiet so this reads first.
         SelloraCard(
+          color: t.accent,
+          border: false,
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Row(
                 children: [
-                  Text("Today's sales", style: context.text.labelSmall),
+                  Text(
+                    "Today's sales",
+                    style: context.text.labelSmall?.copyWith(
+                      // Not full-strength onAccent: this is the caption above
+                      // the figure, and it should sit behind it.
+                      color: t.onAccent.withValues(alpha: 0.75),
+                    ),
+                  ),
                   const Spacer(),
-                  SelloraPill(
-                    label: '${stats.transactions} all-time',
-                    tone: PillTone.neutral,
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: Gap.sm,
+                      vertical: 3,
+                    ),
+                    decoration: BoxDecoration(
+                      // Tinted from the foreground rather than a fixed white,
+                      // so the chip stays visible on a light accent too.
+                      color: t.onAccent.withValues(alpha: 0.16),
+                      borderRadius: BorderRadius.circular(Radii.pill),
+                    ),
+                    child: Text(
+                      '${stats.transactions} all-time',
+                      style: context.text.labelSmall?.copyWith(
+                        color: t.onAccent,
+                      ),
+                    ),
                   ),
                 ],
               ),
               Gap.h8,
-              Text(formatPhp(stats.todaySales),
-                  style: context.text.displaySmall),
+              Text(
+                formatPhp(stats.todaySales),
+                style: context.text.displaySmall?.copyWith(color: t.onAccent),
+              ),
               Gap.h4,
               Text(
                 'This week: ${formatPhp(stats.weekSales)}',
-                style: context.text.bodyMedium,
+                style: context.text.bodyMedium?.copyWith(
+                  color: t.onAccent.withValues(alpha: 0.8),
+                ),
               ),
             ],
           ),
@@ -106,6 +134,7 @@ class _StatsGrid extends StatelessWidget {
                 label: 'Active products',
                 value: '${stats.activeProducts}',
                 icon: Icons.inventory_2_outlined,
+                tone: t.accent,
                 onTap: () => context.go('/business/$businessId/products'),
               ),
             ),
@@ -114,8 +143,15 @@ class _StatsGrid extends StatelessWidget {
               child: _SmallStat(
                 label: 'Low stock',
                 value: '${stats.lowStockCount}',
-                icon: Icons.trending_down,
-                tone: stats.lowStockCount > 0 ? t.warning : null,
+                // Icon and colour move together. A falling-trend glyph in
+                // green says two opposite things at once, so the healthy
+                // state gets its own mark rather than just a recolour.
+                icon: stats.lowStockCount > 0
+                    ? Icons.trending_down
+                    : Icons.check_circle_outline,
+                // Only turns amber when there is actually something to act
+                // on; a permanent warning colour stops meaning anything.
+                tone: stats.lowStockCount > 0 ? t.warning : t.success,
                 onTap: () => context.push('/business/$businessId/inventory'),
               ),
             ),
@@ -132,14 +168,14 @@ class _SmallStat extends StatelessWidget {
     required this.value,
     required this.icon,
     required this.onTap,
-    this.tone,
+    required this.tone,
   });
 
   final String label;
   final String value;
   final IconData icon;
   final VoidCallback onTap;
-  final Color? tone;
+  final Color tone;
 
   @override
   Widget build(BuildContext context) {
@@ -149,9 +185,11 @@ class _SmallStat extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Icon(icon, size: 17, color: tone ?? context.t.muted),
-          Gap.h8,
-          Text(value, style: context.text.headlineSmall?.copyWith(color: tone)),
+          IconTile(icon: icon, tone: tone),
+          Gap.h12,
+          // The figure stays ink, not the tone: a wall of coloured numbers is
+          // harder to scan than one coloured badge against plain text.
+          Text(value, style: context.text.headlineSmall),
           Text(label, style: context.text.labelSmall),
         ],
       ),

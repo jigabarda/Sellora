@@ -32,6 +32,42 @@ class SelloraWordmark extends StatelessWidget {
   }
 }
 
+/// A rounded square holding an icon over a tint of its own colour.
+///
+/// This is where most of the app's colour lives. Tinting the background
+/// instead of colouring the glyph alone gives each row a visible anchor
+/// without turning the text itself into a colour-coded puzzle.
+class IconTile extends StatelessWidget {
+  const IconTile({
+    super.key,
+    required this.icon,
+    required this.tone,
+    this.size = 38,
+  });
+
+  final IconData icon;
+  final Color tone;
+  final double size;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: size,
+      height: size,
+      decoration: BoxDecoration(
+        // Composited over the surface rather than drawn with opacity, so the
+        // tile stays opaque and never picks up whatever sits behind the card.
+        color: Color.alphaBlend(
+          tone.withValues(alpha: context.isDark ? 0.24 : 0.12),
+          context.t.surface,
+        ),
+        borderRadius: BorderRadius.circular(Radii.md),
+      ),
+      child: Icon(icon, size: size * 0.5, color: tone),
+    );
+  }
+}
+
 /// Bordered surface. The app's only container primitive — no drop shadows,
 /// so it reads the same in dark mode.
 class SelloraCard extends StatelessWidget {
@@ -42,6 +78,7 @@ class SelloraCard extends StatelessWidget {
     this.margin = EdgeInsets.zero,
     this.color,
     this.borderColor,
+    this.border = true,
     this.onTap,
   });
 
@@ -50,6 +87,11 @@ class SelloraCard extends StatelessWidget {
   final EdgeInsetsGeometry margin;
   final Color? color;
   final Color? borderColor;
+
+  /// Set false for a filled card. A hairline in the surrounding line colour
+  /// looks like a mistake once the fill is saturated.
+  final bool border;
+
   final VoidCallback? onTap;
 
   @override
@@ -62,7 +104,7 @@ class SelloraCard extends StatelessWidget {
       padding: padding,
       decoration: BoxDecoration(
         color: color ?? t.surface,
-        border: Border.all(color: borderColor ?? t.line),
+        border: border ? Border.all(color: borderColor ?? t.line) : null,
         borderRadius: shape,
       ),
       child: child,
@@ -220,16 +262,9 @@ class EmptyState extends StatelessWidget {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Container(
-              width: 60,
-              height: 60,
-              alignment: Alignment.center,
-              decoration: BoxDecoration(
-                color: t.surfaceAlt,
-                borderRadius: BorderRadius.circular(Radii.lg),
-              ),
-              child: Icon(icon, size: 27, color: t.faint),
-            ),
+            // Tinted rather than grey: an empty screen is a prompt to do
+            // something, and a dead grey square reads as a failure state.
+            IconTile(icon: icon, tone: t.accent, size: 60),
             Gap.h16,
             Text(title, style: context.text.titleMedium),
             Gap.h4,

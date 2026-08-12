@@ -148,9 +148,10 @@ network. Verify with the merged manifest under
 `/business/:businessId/settings` is the local counterpart to the web `/settings`
 page. Reachable from the drawer ("Business Settings") and the More tab.
 
-Implemented: Account (email read-only, editable name, change password),
-Business Profile (name, type, address, phone), Data (link to Backup & Restore),
-and a Danger Zone that deletes the business after the user types its exact name.
+Implemented: Account (username read-only, editable name, change password),
+Business Profile (name, type, address, phone), Appearance (light/dark/auto plus
+the brand colour picker), Data (link to Backup & Restore), and a Danger Zone
+that deletes the business after the user types its exact name.
 
 Intentional deviations from the web page, all forced by the offline model:
 
@@ -176,6 +177,29 @@ trips its "exactly one matching item" assertion.
 
 Covered by `test/business_repository_test.dart` and `test/auth_controller_test.dart`.
 
+## Accounts And Usernames
+
+Accounts are identified by `users.username`, not an email address. An email
+bought nothing offline: there is no server to send to, nothing to verify, and
+no password-reset flow it could power — it was a login field wearing a
+misleading label.
+
+- `AuthController.normalizeUsername` trims and lowercases. Every read and write
+  goes through it, which is what lets the column use a plain UNIQUE index
+  instead of a case-insensitive one.
+- `AuthController.describeUsernameProblem` is the single source of the rule
+  (3–20 characters; letters, numbers, dots and underscores; must start with a
+  letter or number). The sign-up form calls it rather than restating it, so the
+  form and the database cannot drift apart.
+- Existing v4 accounts were converted in place, deriving a username from the
+  local part of the address and suffixing collisions by registration order —
+  `james@gmail.com` keeps `james`, a later `james@work.com` becomes `james2`.
+  An address that sanitises down to nothing usable falls back to `owner`
+  rather than failing the upgrade and locking the user out.
+
+Covered by `test/auth_controller_test.dart` and the `v4 -> v5` group in
+`test/migration_test.dart`.
+
 ## Design System
 
 Every screen reads from one system. There are no hardcoded colours in
@@ -186,12 +210,28 @@ left the app with two incompatible looks before.
   and a dark palette. Read them with `context.t` (`context.t.ink`,
   `context.t.line`, `context.t.danger`...).
 - **Type** comes from `context.text` (`titleSmall`, `bodyLarge`, `labelSmall`).
-  The platform UI font is used throughout; serif is reserved for the `Sellora`
-  wordmark via `SelloraWordmark`.
+  Two bundled families split by role: **Plus Jakarta Sans** (`kBrandFontFamily`)
+  for the wordmark, headings and display figures, **Inter** (`kBodyFontFamily`)
+  for body copy, labels and every table of numbers. Anything above 18pt is
+  Jakarta, at or below is Inter. Only the weights listed under `fonts:` in
+  `pubspec.yaml` exist — asking for one that is not bundled (w900, say) makes
+  Flutter synthesise it, which visibly smears the letterforms.
 - **Spacing and radii** come from `Gap` and `Radii`. Prefer `Gap.h12` over a
   raw `SizedBox(height: 12)`.
-- **The accent is indigo**, deliberately not green or red so it never competes
-  with the success and danger semantics.
+- **The accent is user-configurable** (Settings → Appearance → Brand colour),
+  one of eight palettes in `brand_palette.dart`, persisted locally. Only the
+  accent moves: canvas, ink and the success/danger semantics are fixed across
+  every palette, because a business branding the app Rose still needs a red
+  that unambiguously reads as an error. Nothing may signal success or failure
+  through the accent alone.
+- **`accentSoft` and `onAccent` are computed, never stored per palette.**
+  `SelloraTokens.withPalette` composites the soft tint over `surface` and picks
+  `onAccent` by luminance, so a light accent like amber gets dark text where
+  indigo gets white. Adding a palette means choosing two colours, nothing else.
+- **`IconTile` is where most of the app's colour lives** — an icon over a tint
+  of its own hue. Prefer it to colouring a bare glyph, and keep the figure or
+  label beside it in ink: a wall of coloured numbers is harder to scan than one
+  coloured badge against plain text.
 - **Shared widgets** in `sellora_ui.dart`: `SelloraCard`, `SectionHeader`,
   `SelloraPill`, `EmptyState`, `LoadingView`, `ErrorView`, `ButtonSpinner`,
   `DetailRow`, `SelloraSearchField`, plus `showToast` and
@@ -202,8 +242,12 @@ left the app with two incompatible looks before.
 - **Buttons, inputs, dialogs, sheets, and snackbars** are themed centrally in
   `sellora_theme.dart`. A screen should almost never pass a `style:`.
 
-`landing_screen.dart` carries a file-level `ignore_for_file:
-prefer_const_constructors`. Nearly every widget on that page reads a token, so
+`landing_screen.dart` sets its display family explicitly through
+`LandingScreen._display` rather than reading the text theme, because its scale
+is editorial — far larger and tighter than anything in the app proper. It also
+overrides its CTA buttons back to `t.ink`, so the global accent-filled
+`FilledButton` does not apply there. Both are deliberate. It carries a
+file-level `ignore_for_file: prefer_const_constructors`. Nearly every widget on that page reads a token, so
 it cannot be const; the ignore beats scattering per-line ignores that would go
 stale. On the inverted CTA band, `t.ink` is the background and `t.canvas` the
 foreground — that pair inverts correctly in both themes, where a hardcoded
@@ -295,7 +339,7 @@ can drive upgrade paths against hand-built old schemas. Every schema change
 should add a case there, upgrading from each still-plausible old version — not
 just the newest one.
 
-Two traps this has already caught:
+Three traps this has already caught:
 
 - **Do not index a column in `_createOperationalTables` that a later migration
   step adds.** That method runs for a v1 install *before* the v3 step adds
@@ -303,7 +347,21 @@ Two traps this has already caught:
   bricked the upgrade. Index a column from whoever owns its table.
 - **Guard ALTERs that a `CREATE TABLE` in an earlier step already covers.** The
   v4 product columns are skipped when `oldVersion < 2`, because
-  `_createOperationalTables` builds `products` with them already present.
+  `_createOperationalTables` builds `products` with them already present. The
+  v5 username conversion is guarded the same way on `oldVersion >= 3`.
+- **Rebuilding a table requires foreign keys OFF, or the upgrade silently
+  destroys data.** With enforcement on, `DROP TABLE users` performs an implicit
+  delete of every row, which fires `businesses.user_id ON DELETE CASCADE` and
+  takes the user's entire dataset with it. `openOptions()` therefore disables
+  the pragma in `onConfigure` and re-enables it in `onOpen`; it cannot be
+  toggled inside `onUpgrade`, where sqflite's transaction makes the statement a
+  silent no-op. Flip that one line and `migration_test.dart` fails with every
+  business gone — which is exactly what the test is for.
+
+Because the pragma sequence *is* the safety mechanism, a migration that
+restructures a table must be tested through `SelloraDatabase.openOptions()`
+against a real temp file, not by calling `migrate()` directly. Calling
+`migrate()` in isolation skips the very thing that makes it safe.
 
 ## Android Application Id
 
@@ -316,7 +374,7 @@ orphans every existing install's database. The launcher label is `Sellora`.
 
 | Web concept/table | Mobile local equivalent | Notes |
 | --- | --- | --- |
-| Supabase auth users / profiles | `users` table + SharedPreferences session | Local-only auth. No Supabase dependency in mobile core. |
+| Supabase auth users / profiles | `users` table + SharedPreferences session | Local-only auth, keyed by `username` since schema v5. No email is collected — there is no server to send mail to and nothing to verify against. No Supabase dependency in mobile core. |
 | `tenants` | `businesses` | Mobile uses "business" wording and `business_id`. |
 | `tenant_users` | Simplified `businesses.user_id` currently | Future team/role support may need a local membership table. |
 | `categories` | `categories` | Managed from the categories screen; products reference one optionally. |

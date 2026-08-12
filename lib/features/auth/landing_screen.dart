@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../core/sellora_theme.dart';
 import '../../core/sellora_ui.dart';
 
 /// The public marketing page.
@@ -12,7 +13,10 @@ import '../../core/sellora_ui.dart';
 class LandingScreen extends StatelessWidget {
   const LandingScreen({super.key});
 
-  static const _serif = 'serif';
+  /// The landing page sets its display family explicitly rather than reading
+  /// the text theme, because its type scale is editorial — much larger and
+  /// tighter than anything in the app proper.
+  static const _display = kBrandFontFamily;
 
   @override
   Widget build(BuildContext context) {
@@ -33,7 +37,7 @@ class LandingScreen extends StatelessWidget {
               'Sellora',
               style: TextStyle(
                 color: context.t.ink,
-                fontFamily: _serif,
+                fontFamily: _display,
                 fontSize: 18,
                 fontWeight: FontWeight.w800,
                 letterSpacing: 0,
@@ -47,7 +51,7 @@ class LandingScreen extends StatelessWidget {
                   minimumSize: Size(42, 32),
                   padding: EdgeInsets.symmetric(horizontal: 8),
                   textStyle: TextStyle(
-                    fontFamily: _serif,
+                    fontFamily: _display,
                     fontSize: 11,
                     fontWeight: FontWeight.w700,
                   ),
@@ -67,7 +71,7 @@ class LandingScreen extends StatelessWidget {
                       borderRadius: BorderRadius.circular(7),
                     ),
                     textStyle: TextStyle(
-                      fontFamily: _serif,
+                      fontFamily: _display,
                       fontSize: 10,
                       fontWeight: FontWeight.w800,
                     ),
@@ -119,9 +123,9 @@ class _HeroSection extends StatelessWidget {
             text: TextSpan(
               style: TextStyle(
                 color: context.t.ink,
-                fontFamily: LandingScreen._serif,
+                fontFamily: LandingScreen._display,
                 fontSize: 23,
-                fontWeight: FontWeight.w900,
+                fontWeight: FontWeight.w800,
                 height: 1.08,
                 letterSpacing: 0,
               ),
@@ -157,7 +161,7 @@ class _HeroSection extends StatelessWidget {
                 borderRadius: BorderRadius.circular(7),
               ),
               textStyle: TextStyle(
-                fontFamily: LandingScreen._serif,
+                fontFamily: LandingScreen._display,
                 fontSize: 11,
                 fontWeight: FontWeight.w800,
               ),
@@ -175,7 +179,7 @@ class _HeroSection extends StatelessWidget {
                 borderRadius: BorderRadius.circular(7),
               ),
               textStyle: TextStyle(
-                fontFamily: LandingScreen._serif,
+                fontFamily: LandingScreen._display,
                 fontSize: 11,
                 fontWeight: FontWeight.w800,
               ),
@@ -204,36 +208,42 @@ class _FeaturesSection extends StatelessWidget {
 
   static const _features = [
     _FeatureData(
+      tone: _FeatureTone.accent,
       icon: Icons.storefront_outlined,
       title: 'Multi-Business Support',
       body:
           'Manage multiple businesses from a single account. Water refilling, ice sales, rentals - all in one place.',
     ),
     _FeatureData(
+      tone: _FeatureTone.success,
       icon: Icons.shopping_cart_outlined,
       title: 'Point of Sale',
       body:
           'Record sales quickly with an easy-to-use POS. Auto-calculate totals and generate receipts instantly.',
     ),
     _FeatureData(
+      tone: _FeatureTone.warning,
       icon: Icons.inventory_2_outlined,
       title: 'Inventory Tracking',
       body:
           'Track stock levels in real-time. Get alerts when products are running low so you never miss a sale.',
     ),
     _FeatureData(
+      tone: _FeatureTone.accent,
       icon: Icons.bar_chart,
       title: 'Sales Reports',
       body:
           'View daily, weekly, and monthly sales reports with charts. Know your best-selling products at a glance.',
     ),
     _FeatureData(
+      tone: _FeatureTone.success,
       icon: Icons.trending_up,
       title: 'Expense & Profit Tracking',
       body:
           'Log your business expenses and see your real profit. Make smarter decisions with clear financial data.',
     ),
     _FeatureData(
+      tone: _FeatureTone.warning,
       icon: Icons.groups_outlined,
       title: 'Customer Management',
       body:
@@ -285,24 +295,18 @@ class _FeatureCard extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Container(
-            width: 38,
-            height: 38,
-            alignment: Alignment.center,
-            decoration: BoxDecoration(
-              color: context.t.line,
-              borderRadius: BorderRadius.circular(8),
-            ),
-            child: Icon(feature.icon, size: 20, color: context.t.ink),
+          IconTile(
+            icon: feature.icon,
+            tone: _toneColour(context, feature.tone),
           ),
           SizedBox(height: 22),
           Text(
             feature.title,
             style: TextStyle(
               color: context.t.ink,
-              fontFamily: LandingScreen._serif,
+              fontFamily: LandingScreen._display,
               fontSize: 13,
-              fontWeight: FontWeight.w900,
+              fontWeight: FontWeight.w800,
               letterSpacing: 0,
               height: 1.2,
             ),
@@ -312,7 +316,7 @@ class _FeatureCard extends StatelessWidget {
             feature.body,
             style: TextStyle(
               color: context.t.muted,
-              fontFamily: LandingScreen._serif,
+              fontFamily: LandingScreen._display,
               fontSize: 10,
               fontWeight: FontWeight.w500,
               height: 1.35,
@@ -388,9 +392,9 @@ class _StepItem extends StatelessWidget {
             number,
             style: TextStyle(
               color: context.t.canvas,
-              fontFamily: LandingScreen._serif,
+              fontFamily: LandingScreen._display,
               fontSize: 17,
-              fontWeight: FontWeight.w900,
+              fontWeight: FontWeight.w800,
               letterSpacing: 0,
             ),
           ),
@@ -401,9 +405,9 @@ class _StepItem extends StatelessWidget {
           textAlign: TextAlign.center,
           style: TextStyle(
             color: context.t.ink,
-            fontFamily: LandingScreen._serif,
+            fontFamily: LandingScreen._display,
             fontSize: 13,
-            fontWeight: FontWeight.w900,
+            fontWeight: FontWeight.w800,
             height: 1.2,
             letterSpacing: 0,
           ),
@@ -438,9 +442,9 @@ class _FinalCtaSection extends StatelessWidget {
             textAlign: TextAlign.center,
             style: TextStyle(
               color: context.t.canvas,
-              fontFamily: LandingScreen._serif,
+              fontFamily: LandingScreen._display,
               fontSize: 21,
-              fontWeight: FontWeight.w900,
+              fontWeight: FontWeight.w800,
               height: 1.17,
               letterSpacing: 0,
             ),
@@ -469,9 +473,9 @@ class _FinalCtaSection extends StatelessWidget {
                 borderRadius: BorderRadius.circular(7),
               ),
               textStyle: TextStyle(
-                fontFamily: LandingScreen._serif,
+                fontFamily: LandingScreen._display,
                 fontSize: 11,
-                fontWeight: FontWeight.w900,
+                fontWeight: FontWeight.w800,
               ),
             ),
           ),
@@ -495,7 +499,7 @@ class _FooterSection extends StatelessWidget {
             textAlign: TextAlign.center,
             style: TextStyle(
               color: context.t.muted,
-              fontFamily: LandingScreen._serif,
+              fontFamily: LandingScreen._display,
               fontSize: 10,
               fontWeight: FontWeight.w500,
               height: 1.35,
@@ -508,7 +512,7 @@ class _FooterSection extends StatelessWidget {
             textAlign: TextAlign.center,
             style: TextStyle(
               color: context.t.muted,
-              fontFamily: LandingScreen._serif,
+              fontFamily: LandingScreen._display,
               fontSize: 10,
               fontWeight: FontWeight.w500,
               height: 1.35,
@@ -533,9 +537,9 @@ class _SectionTitle extends StatelessWidget {
       textAlign: TextAlign.center,
       style: TextStyle(
         color: context.t.ink,
-        fontFamily: LandingScreen._serif,
+        fontFamily: LandingScreen._display,
         fontSize: 21,
-        fontWeight: FontWeight.w900,
+        fontWeight: FontWeight.w800,
         height: 1.15,
         letterSpacing: 0,
       ),
@@ -569,7 +573,7 @@ class _ConstrainedText extends StatelessWidget {
         textAlign: TextAlign.center,
         style: TextStyle(
           color: color,
-          fontFamily: LandingScreen._serif,
+          fontFamily: LandingScreen._display,
           fontSize: fontSize,
           fontWeight: fontWeight,
           height: lineHeight,
@@ -600,7 +604,7 @@ class _TrustItem extends StatelessWidget {
           text,
           style: TextStyle(
             color: context.t.muted,
-            fontFamily: LandingScreen._serif,
+            fontFamily: LandingScreen._display,
             fontSize: 10,
             fontWeight: FontWeight.w500,
             letterSpacing: 0,
@@ -616,9 +620,27 @@ class _FeatureData {
     required this.icon,
     required this.title,
     required this.body,
+    required this.tone,
   });
 
   final IconData icon;
   final String title;
   final String body;
+
+  /// Picks the feature's icon tile out of [_FeatureTone]. Stored as an enum
+  /// rather than a Color so the list can stay `const` while the actual colour
+  /// still comes from the active theme.
+  final _FeatureTone tone;
+}
+
+enum _FeatureTone { accent, success, warning, danger }
+
+Color _toneColour(BuildContext context, _FeatureTone tone) {
+  final t = context.t;
+  return switch (tone) {
+    _FeatureTone.accent => t.accent,
+    _FeatureTone.success => t.success,
+    _FeatureTone.warning => t.warning,
+    _FeatureTone.danger => t.danger,
+  };
 }

@@ -92,8 +92,10 @@ ThemeData buildSelloraTheme(
     ),
     filledButtonTheme: FilledButtonThemeData(
       style: FilledButton.styleFrom(
-        backgroundColor: t.ink,
-        foregroundColor: t.canvas,
+        // Primary actions carry the brand colour. The landing page overrides
+        // this back to ink for its editorial hero, which is deliberate.
+        backgroundColor: t.accent,
+        foregroundColor: t.onAccent,
         disabledBackgroundColor: t.lineStrong,
         disabledForegroundColor: t.faint,
         minimumSize: const Size(0, 50),
@@ -123,8 +125,10 @@ ThemeData buildSelloraTheme(
       ),
     ),
     floatingActionButtonTheme: FloatingActionButtonThemeData(
-      backgroundColor: t.ink,
-      foregroundColor: t.canvas,
+      // The FAB is the one control on a list screen that has to be found
+      // instantly, so it carries the brand colour rather than plain ink.
+      backgroundColor: t.accent,
+      foregroundColor: t.onAccent,
       elevation: 0,
       focusElevation: 0,
       hoverElevation: 0,
