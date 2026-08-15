@@ -637,6 +637,25 @@ A feature is done when:
 - It has been formatted and analyzed.
 - Any intentional deviation from the web app is documented.
 
+## Smart Insights (designed, not built)
+
+`docs/INSIGHTS_DESIGN.md` specifies an offline "what should I do today?" feature
+built from arithmetic rather than a language model — stock run-out forecasts,
+profit attribution, day-of-week patterns, dead stock, refund concentration.
+
+Two things in that document are the point of it, and are easy to lose:
+
+- **Every rule carries a minimum-evidence gate, and the gate is part of the
+  rule.** An insight fired from two data points is as bad as a hallucinated one,
+  because the user cannot tell it apart from a well-founded one. When the gate
+  fails the insight does not appear — it is never softened into a hedge.
+- **Every insight states its numbers.** Not "you're losing money" but "₱18,350 in
+  expenses against ₱605 in sales over 7 days."
+
+It needs no schema change, so it can land before, between, or after the feature
+work below. The same document records why an on-device or cloud LLM was rejected
+for now, so that decision does not get relitigated from scratch.
+
 ## Immediate Next Best Work
 
 The next useful development path is:
