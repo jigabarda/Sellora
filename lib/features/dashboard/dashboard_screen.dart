@@ -112,9 +112,23 @@ class _StatsGrid extends StatelessWidget {
                 ],
               ),
               Gap.h8,
-              Text(
-                formatPhp(stats.todaySales),
-                style: context.text.displaySmall?.copyWith(color: t.onAccent),
+              // Counts up on arrival. The figure lands a moment after the
+              // card does, which draws the eye to the one number the owner
+              // opened the app to see. Short enough that it never delays
+              // reading it.
+              TweenAnimationBuilder<double>(
+                tween: Tween(begin: 0, end: stats.todaySales),
+                duration: const Duration(milliseconds: 650),
+                curve: Curves.easeOutCubic,
+                builder: (context, value, _) => Text(
+                  formatPhp(value),
+                  style: context.text.displaySmall?.copyWith(
+                    color: t.onAccent,
+                    // Locked to tabular figures so the digits do not jitter
+                    // sideways while the number is still climbing.
+                    fontFeatures: const [FontFeature.tabularFigures()],
+                  ),
+                ),
               ),
               Gap.h4,
               Text(

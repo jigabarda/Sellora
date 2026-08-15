@@ -1,6 +1,6 @@
 # Sellora Mobile Project Guide
 
-Last updated: 2026-08-06 (design system + dark mode)
+Last updated: 2026-08-16 (username auth, brand palettes, mobile welcome screen)
 
 ## Purpose
 
@@ -60,15 +60,26 @@ The mobile app is not a webview and should not depend on Supabase for core use. 
 
 We are cloning `SalesManagementSystem` into `sellora_mobile`.
 
-The current focus is making the Flutter app follow the Sellora web app, beginning with the public landing page UI and continuing through the authenticated dashboard/business tools. The landing page should match the web mobile design: compact sticky nav, "Sellora" brand, hero copy, black primary buttons, trust badges, feature cards, three-step setup section, dark CTA band, and footer.
+The current focus is the authenticated business tools. The **logged-out
+experience no longer clones the web**: the marketing landing page has been
+replaced by a native swipeable welcome screen (see Welcome Screen), and login
+is by username rather than email. Both are deliberate departures — see
+non-negotiable 6.
 
-Clone first, enhance second. New features are allowed only after the matching web feature is already cloned or when the enhancement does not interrupt parity work. If there is a conflict between a new idea and web parity, web parity wins until the clone is complete.
+Clone first, enhance second still holds for everything behind the login.
+New features are allowed only after the matching web feature is already cloned
+or when the enhancement does not interrupt parity work. Where a new idea
+conflicts with web parity inside the workspace, web parity wins until the clone
+is complete.
 
 ## Mobile Web Parity Reference
 
 The full mobile view of `SalesManagementSystem` has been reviewed from screenshots. Future implementation should match these screens before adding enhancements:
 
-- Login page: vertically centered card, Sellora title, "Welcome back", email/password fields, black Sign In button, sign-up link.
+- Login page: vertically centered card, Sellora title, "Welcome back", sign-up
+  link. **Diverges deliberately**: the field is a username, not an email, and
+  the button carries the brand accent rather than black. See Accounts And
+  Usernames.
 - Mobile sidebar/drawer: Sellora brand, business switcher card, Menu group, Settings group, Super Admin group, Sign Out footer, blurred/dimmed page backdrop.
 - Dashboard: top menu trigger, business name/subtitle, metric cards, product performance card, recent sales card, quick action card.
 - Products: page title/subtitle, Categories button, Add Product button, product list table/card with search, category, price, stock, unit, status.
@@ -219,15 +230,15 @@ left the app with two incompatible looks before.
 - **Spacing and radii** come from `Gap` and `Radii`. Prefer `Gap.h12` over a
   raw `SizedBox(height: 12)`.
 - **The accent is user-configurable** (Settings → Appearance → Brand colour),
-  one of eight palettes in `brand_palette.dart`, persisted locally. Only the
+  one of eighteen palettes in `brand_palette.dart`, persisted locally. Only the
   accent moves: canvas, ink and the success/danger semantics are fixed across
   every palette, because a business branding the app Rose still needs a red
   that unambiguously reads as an error. Nothing may signal success or failure
   through the accent alone.
 - **`accentSoft` and `onAccent` are computed, never stored per palette.**
-  `SelloraTokens.withPalette` composites the soft tint over `surface` and picks
-  `onAccent` by luminance, so a light accent like amber gets dark text where
-  indigo gets white. Adding a palette means choosing two colours, nothing else.
+  `SelloraTokens.withPalette` composites the soft tint over `surface` and hands
+  `onAccent` to `onColor`, which compares contrast ratios — see Colour Contrast
+  below. Adding a palette means choosing two colours, nothing else.
 - **`IconTile` is where most of the app's colour lives** — an icon over a tint
   of its own hue. Prefer it to colouring a bare glyph, and keep the figure or
   label beside it in ink: a wall of coloured numbers is harder to scan than one
@@ -242,16 +253,47 @@ left the app with two incompatible looks before.
 - **Buttons, inputs, dialogs, sheets, and snackbars** are themed centrally in
   `sellora_theme.dart`. A screen should almost never pass a `style:`.
 
-`landing_screen.dart` sets its display family explicitly through
-`LandingScreen._display` rather than reading the text theme, because its scale
-is editorial — far larger and tighter than anything in the app proper. It also
-overrides its CTA buttons back to `t.ink`, so the global accent-filled
-`FilledButton` does not apply there. Both are deliberate. It carries a
-file-level `ignore_for_file: prefer_const_constructors`. Nearly every widget on that page reads a token, so
-it cannot be const; the ignore beats scattering per-line ignores that would go
-stale. On the inverted CTA band, `t.ink` is the background and `t.canvas` the
-foreground — that pair inverts correctly in both themes, where a hardcoded
-white would have gone white-on-white in dark mode.
+There are no per-screen button overrides left. Every primary action is a plain
+`FilledButton` and therefore carries the brand accent. The landing page used to
+override its CTAs back to `t.ink`, which meant a black "Get Started" sat one tap
+away from an accent-coloured "Sign in" and the two looked like different
+products. If a screen appears to need its own button colour, the answer is
+almost always a token, not a `style:`.
+
+## Welcome Screen
+
+`landing_screen.dart` is a swipeable four-slide intro, not a marketing page.
+
+It was a direct port of the web landing page — hero, feature grid, steps, CTA
+band, footer, all in one long scroll. That shape earns its keep on the web,
+where a visitor arrives cold from a search result and has to be convinced.
+Someone who already installed the app is past that, and making them scroll a
+sales pitch to reach the sign-up button is friction dressed as persuasion.
+
+- One idea per slide, with the primary CTA pinned below the pager, so the user
+  can act at any point instead of swiping to the end first.
+- The artwork is drawn, not an asset: a tinted disc sized from the available
+  space, the feature's icon, and two floating chips. It recolours with the
+  brand palette, works in both themes, and adds nothing to the APK.
+- The active page indicator changes *width*, not just colour. The accent is
+  user-configurable and some choices sit close to `lineStrong`, so shape has to
+  carry the state.
+- Slides fade and scale toward their settled position using the live
+  `PageController` offset, which is why `_page` is a double rather than an int.
+
+## Colour Contrast
+
+`SelloraTokens.onColor` picks ink or white for text on a coloured background by
+comparing real WCAG contrast ratios. It does **not** test luminance against a
+threshold, which is what it did first and which was wrong: at the midtones
+where most brand colours live, a threshold picks white when dark text is twice
+as readable. Dark indigo scores 3.04:1 against white and 6.07:1 against ink,
+and seven of the eighteen accents were getting the losing option.
+
+`test/brand_palette_test.dart` asserts every palette in both themes clears
+4.5:1 and, separately, that the chosen foreground beats the one not chosen.
+Reinstating the threshold fails 24 of those. Any new accent must pass without
+special-casing — if it cannot, the colour is wrong, not the test.
 
 ## Widget Smoke Tests
 

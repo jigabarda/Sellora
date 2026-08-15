@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
@@ -311,7 +312,12 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
           Gap.h12,
           _PalettePicker(
             selected: ref.watch(brandPaletteProvider),
-            onSelected: (p) => ref.read(brandPaletteProvider.notifier).set(p),
+            onSelected: (p) {
+              // The whole app recolours on this tap. A confirming tick makes
+              // that feel chosen rather than accidental.
+              HapticFeedback.selectionClick();
+              ref.read(brandPaletteProvider.notifier).set(p);
+            },
           ),
         ],
       ),
@@ -539,17 +545,30 @@ class _PalettePicker extends StatelessWidget {
   Widget build(BuildContext context) {
     final brightness = Theme.of(context).brightness;
 
-    return Wrap(
-      spacing: Gap.md,
-      runSpacing: Gap.md,
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        for (final palette in BrandPalette.values)
-          _Swatch(
-            palette: palette,
-            colour: palette.accentFor(brightness),
-            isSelected: palette == selected,
-            onTap: () => onSelected(palette),
-          ),
+        Wrap(
+          spacing: Gap.md,
+          runSpacing: Gap.md,
+          children: [
+            for (final palette in BrandPalette.values)
+              _Swatch(
+                palette: palette,
+                colour: palette.accentFor(brightness),
+                isSelected: palette == selected,
+                onTap: () => onSelected(palette),
+              ),
+          ],
+        ),
+        Gap.h12,
+        // The grid alone cannot say which swatch is which, and a tooltip needs
+        // a long-press nobody will discover. Naming the current choice costs
+        // one line and removes the guesswork.
+        Text(
+          selected.label,
+          style: context.text.labelMedium?.copyWith(color: context.t.ink),
+        ),
       ],
     );
   }
@@ -582,8 +601,8 @@ class _Swatch extends StatelessWidget {
           onTap: onTap,
           customBorder: const CircleBorder(),
           child: Container(
-            width: 44,
-            height: 44,
+            width: 40,
+            height: 40,
             decoration: BoxDecoration(
               color: colour,
               shape: BoxShape.circle,
@@ -598,12 +617,11 @@ class _Swatch extends StatelessWidget {
             child: isSelected
                 ? Icon(
                     Icons.check,
-                    size: 20,
-                    // Contrast against the swatch, which for a light accent
-                    // like amber means dark rather than white.
-                    color: colour.computeLuminance() > 0.55
-                        ? const Color(0xFF14140F)
-                        : Colors.white,
+                    size: 18,
+                    // Same contrast rule the theme uses for text on the
+                    // accent, so the tick never disagrees with the button it
+                    // is previewing.
+                    color: SelloraTokens.onColor(colour),
                   )
                 : null,
           ),
