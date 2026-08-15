@@ -138,6 +138,10 @@ class _SaleCard extends StatelessWidget {
           shape: const Border(),
           collapsedShape: const Border(),
           tilePadding: const EdgeInsets.symmetric(horizontal: Gap.lg),
+          // Money in is `success`, the mirror of the `danger` used for
+          // expenses and refunds. A sales list and an expenses list should be
+          // tellable apart at a glance.
+          leading: IconTile(icon: Icons.receipt_long_outlined, tone: t.success),
           title: Text(
             formatPhp(sale.total),
             style: context.text.titleSmall,

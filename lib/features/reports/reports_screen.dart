@@ -57,20 +57,22 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
                   Row(
                     children: [
                       Expanded(
-                        child: _MetricCard(
+                        child: StatTile(
                           label: 'Revenue',
                           value: formatPhp(r.revenue),
                           icon: Icons.trending_up,
                           tone: context.t.success,
+                          compact: true,
                         ),
                       ),
                       Gap.w12,
                       Expanded(
-                        child: _MetricCard(
+                        child: StatTile(
                           label: 'Expenses',
                           value: formatPhp(r.expenses),
                           icon: Icons.trending_down,
                           tone: context.t.danger,
+                          compact: true,
                         ),
                       ),
                     ],
@@ -232,41 +234,6 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
         _to = startOfTodayLocal(picked.end);
       });
     }
-  }
-}
-
-class _MetricCard extends StatelessWidget {
-  const _MetricCard({
-    required this.label,
-    required this.value,
-    required this.icon,
-    required this.tone,
-  });
-
-  final String label;
-  final String value;
-  final IconData icon;
-  final Color tone;
-
-  @override
-  Widget build(BuildContext context) {
-    return SelloraCard(
-      padding: const EdgeInsets.all(Gap.md),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Icon(icon, size: 17, color: tone),
-          Gap.h8,
-          Text(
-            value,
-            style: context.text.titleMedium,
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-          ),
-          Text(label, style: context.text.labelSmall),
-        ],
-      ),
-    );
   }
 }
 

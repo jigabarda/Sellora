@@ -158,6 +158,14 @@ class _ProductCard extends StatelessWidget {
           Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
+              // Gives an alphabetical list a colour to scan by. Inactive
+              // products drop to muted so the row visibly steps back without
+              // losing the "Inactive" pill that actually states it.
+              InitialsTile(
+                label: product.name,
+                tone: product.active ? null : context.t.faint,
+              ),
+              Gap.w12,
               Expanded(
                 child: Text(
                   product.name,

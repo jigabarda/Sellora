@@ -243,6 +243,18 @@ left the app with two incompatible looks before.
   of its own hue. Prefer it to colouring a bare glyph, and keep the figure or
   label beside it in ink: a wall of coloured numbers is harder to scan than one
   coloured badge against plain text.
+- **Money in is `success`, money out is `danger`.** Sales rows, the Revenue
+  metric, and stock going up are green; expenses, refunds, and stock going down
+  are red. A sales list and an expenses list must be tellable apart at a
+  glance, and the two screens previously used the same grey.
+- **`InitialsTile` colours customer and product rows by name.** The hue is
+  decoration, never status — the same name must come back the same colour on
+  every launch, so it cannot also track anything that changes. It is generated
+  rather than taken from the semantic tokens, because a customer tinted
+  `danger` would read as a problem with that customer.
+- **`StatTile` is the one figure-with-a-label card.** The dashboard, Inventory
+  and Reports each had their own copy; they had drifted on icon size, spacing,
+  and whether an over-long value clipped.
 - **Shared widgets** in `sellora_ui.dart`: `SelloraCard`, `SectionHeader`,
   `SelloraPill`, `EmptyState`, `LoadingView`, `ErrorView`, `ButtonSpinner`,
   `DetailRow`, `SelloraSearchField`, plus `showToast` and
@@ -280,6 +292,30 @@ sales pitch to reach the sign-up button is friction dressed as persuasion.
   carry the state.
 - Slides fade and scale toward their settled position using the live
   `PageController` offset, which is why `_page` is a double rather than an int.
+
+## Seeded Device Database
+
+`test/tools/seed_device_db.dart` writes a populated `sellora.db` so the list
+screens can be reviewed on a device with real content instead of empty states.
+The filename omits the `_test` suffix on purpose, so `flutter test` never picks
+it up and no ordinary run writes files.
+
+    flutter test test/tools/seed_device_db.dart
+    adb root
+    adb push build/seed/sellora.db /sdcard/sellora.db
+    adb shell "cp /sdcard/sellora.db /data/data/com.sellora.mobile/app_flutter/sellora.db"
+    adb shell "chown <uid>:<uid> /data/data/com.sellora.mobile/app_flutter/sellora.db"
+
+Then sign in as `juandc` / `secret123`. Two traps:
+
+- **Open it through `SelloraDatabase.openOptions()`.** Building the file with a
+  hand-written `OpenDatabaseOptions(version: 1)` stamps `user_version` at 1, so
+  the app runs the v1 migration over a schema that already has every table,
+  throws inside `main` before `runApp`, and hangs with no window — surfacing as
+  "Sellora isn't responding" rather than anything resembling a crash.
+- **`flutter install` wipes `app_flutter/`.** Push the database *after*
+  installing and after the app has launched once, or the copy lands in a
+  directory that is about to be deleted.
 
 ## Colour Contrast
 

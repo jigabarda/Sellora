@@ -3,6 +3,12 @@ import 'package:sqflite/sqflite.dart';
 import '../models/entities.dart';
 import '../../util/ids.dart';
 
+/// At or below this, a product counts as low stock.
+///
+/// One definition, because the Inventory screen and this repository both
+/// decide what "low" means and had drifted apart — see [ProductRepository.listLowStock].
+const kLowStockThreshold = 5;
+
 class ProductRepository {
   ProductRepository(this._db);
 
@@ -113,9 +119,10 @@ class ProductRepository {
   }
 
   /// Untracked products are excluded: they have no inventory to run low on,
-  /// and their `stock` column sits at 0 forever.
+  /// and their `stock` column sits at 0 forever. Inactive ones are excluded
+  /// too — a delisted product cannot be sold, so it cannot run out.
   Future<List<Product>> listLowStock(String businessId,
-      {int threshold = 5}) async {
+      {int threshold = kLowStockThreshold}) async {
     final rows = await _db.query(
       _table,
       where:

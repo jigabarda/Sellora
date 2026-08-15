@@ -120,16 +120,7 @@ class _RefundCard extends StatelessWidget {
         children: [
           Row(
             children: [
-              Container(
-                width: 36,
-                height: 36,
-                alignment: Alignment.center,
-                decoration: BoxDecoration(
-                  color: t.dangerSoft,
-                  borderRadius: BorderRadius.circular(Radii.sm),
-                ),
-                child: Icon(Icons.replay, size: 17, color: t.danger),
-              ),
+              IconTile(icon: Icons.replay, tone: t.danger),
               Gap.w12,
               Expanded(
                 child: Column(

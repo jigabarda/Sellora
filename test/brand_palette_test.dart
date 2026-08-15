@@ -3,7 +3,7 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:sellora_mobile/core/brand_palette.dart';
-import 'package:sellora_mobile/core/sellora_tokens.dart';
+import 'package:sellora_mobile/core/sellora_ui.dart';
 
 /// WCAG relative-contrast ratio, reimplemented here rather than reaching into
 /// the private one under test. A test that borrows the implementation it is
@@ -63,6 +63,27 @@ void main() {
     });
   });
 
+  test('avatar hues avoid the olive band that muddies at low lightness', () {
+    for (final hue in avatarHues) {
+      expect(
+        hue < 45 || hue > 105,
+        isTrue,
+        reason: 'hue $hue falls in the khaki range',
+      );
+    }
+  });
+
+  test('the same seed always gets the same hue', () {
+    // The point of a mnemonic is recognition; a colour that moves between
+    // launches is worse than no colour. `hashCode` would break this.
+    for (final seed in ['Aling Nena', 'juandc', 'Ice Tube Sack', '']) {
+      expect(mnemonicHue(seed), mnemonicHue(seed));
+      expect(avatarHues, contains(mnemonicHue(seed)));
+    }
+    expect(mnemonicHue('  Aling Nena  '), mnemonicHue('aling nena'),
+        reason: 'trim and case must not change the colour');
+  });
+
   test('a stored palette name survives a round trip', () {
     for (final palette in BrandPalette.values) {
       expect(BrandPalette.fromName(palette.name), palette);
@@ -75,5 +96,33 @@ void main() {
     expect(BrandPalette.fromName('chartreuse'), BrandPalette.fallback);
     expect(BrandPalette.fromName(null), BrandPalette.fallback);
     expect(BrandPalette.fromName(''), BrandPalette.fallback);
+  });
+
+  group('mnemonic avatar tones', () {
+    // Generated from a hash, so no amount of eyeballing covers them. Sweeping
+    // the hue circle exercises every colour the generator can produce, against
+    // the real function rather than a restatement of its constants.
+    for (final brightness in Brightness.values) {
+      test('every hue keeps its initials readable in ${brightness.name}', () {
+        // Sweeps the whole circle, not just `avatarHues`, so curating that
+        // list stays a purely aesthetic decision — any hue added later is
+        // already known to be legible.
+        for (var hue = 0; hue < 360; hue++) {
+          final tone = mnemonicToneForHue(
+            hue.toDouble(),
+            isDark: brightness == Brightness.dark,
+          );
+          final ratio = contrast(tone, SelloraTokens.onColor(tone));
+          expect(
+            ratio,
+            greaterThanOrEqualTo(4.5),
+            reason: 'hue $hue in ${brightness.name} scores '
+                '${ratio.toStringAsFixed(2)}:1. Yellows and cyans peak in '
+                'luminance, so lightness has to stay low enough that even '
+                'those clear the bar.',
+          );
+        }
+      });
+    }
   });
 }

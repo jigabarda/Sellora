@@ -144,7 +144,7 @@ class _StatsGrid extends StatelessWidget {
         Row(
           children: [
             Expanded(
-              child: _SmallStat(
+              child: StatTile(
                 label: 'Active products',
                 value: '${stats.activeProducts}',
                 icon: Icons.inventory_2_outlined,
@@ -154,7 +154,7 @@ class _StatsGrid extends StatelessWidget {
             ),
             Gap.w12,
             Expanded(
-              child: _SmallStat(
+              child: StatTile(
                 label: 'Low stock',
                 value: '${stats.lowStockCount}',
                 // Icon and colour move together. A falling-trend glyph in
@@ -172,41 +172,6 @@ class _StatsGrid extends StatelessWidget {
           ],
         ),
       ],
-    );
-  }
-}
-
-class _SmallStat extends StatelessWidget {
-  const _SmallStat({
-    required this.label,
-    required this.value,
-    required this.icon,
-    required this.onTap,
-    required this.tone,
-  });
-
-  final String label;
-  final String value;
-  final IconData icon;
-  final VoidCallback onTap;
-  final Color tone;
-
-  @override
-  Widget build(BuildContext context) {
-    return SelloraCard(
-      onTap: onTap,
-      padding: const EdgeInsets.all(Gap.md),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          IconTile(icon: icon, tone: tone),
-          Gap.h12,
-          // The figure stays ink, not the tone: a wall of coloured numbers is
-          // harder to scan than one coloured badge against plain text.
-          Text(value, style: context.text.headlineSmall),
-          Text(label, style: context.text.labelSmall),
-        ],
-      ),
     );
   }
 }

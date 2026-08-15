@@ -167,17 +167,10 @@ class _ExpenseCard extends StatelessWidget {
       onTap: onEdit,
       child: Row(
         children: [
-          Container(
-            width: 36,
-            height: 36,
-            alignment: Alignment.center,
-            decoration: BoxDecoration(
-              color: t.surfaceAlt,
-              borderRadius: BorderRadius.circular(Radii.sm),
-            ),
-            child:
-                Icon(_categoryIcon(expense.category), size: 17, color: t.muted),
-          ),
+          // Money out is `danger` throughout — the Expenses metric in
+          // Reports already uses it. The tint is soft enough not to read as
+          // an error, and the icon carries the category.
+          IconTile(icon: _categoryIcon(expense.category), tone: t.danger),
           Gap.w12,
           Expanded(
             child: Column(
