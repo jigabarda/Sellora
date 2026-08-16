@@ -13,6 +13,12 @@ class MoreScreen extends StatelessWidget {
     final groups = <_MoreGroup>[
       _MoreGroup('Operations', [
         _MoreItem(
+            'Scan a page',
+            Icons.document_scanner_outlined,
+            '/business/$businessId/scan',
+            'Photograph your notebook and record what it says',
+            _MoreTone.accent),
+        _MoreItem(
             'Customers',
             Icons.people_outline,
             '/business/$businessId/customers',

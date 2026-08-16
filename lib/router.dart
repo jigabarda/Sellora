@@ -18,6 +18,7 @@ import 'features/expenses/expenses_screen.dart';
 import 'features/home/home_screen.dart';
 import 'features/insights/insights_screen.dart';
 import 'features/inventory/inventory_screen.dart';
+import 'features/notebook_capture/notebook_capture_screen.dart';
 import 'features/quick_entry/quick_entry_screen.dart';
 import 'features/more/more_screen.dart';
 import 'features/products/product_form_screen.dart';
@@ -321,6 +322,15 @@ final goRouterProvider = Provider<GoRouter>((ref) {
             builder: (context, state) {
               final id = state.pathParameters['businessId']!;
               return QuickEntryScreen(businessId: id);
+            },
+          ),
+          GoRoute(
+            path: 'scan',
+            parentNavigatorKey: rootNavigatorKey,
+            name: 'business_notebook_capture',
+            builder: (context, state) {
+              final id = state.pathParameters['businessId']!;
+              return NotebookCaptureScreen(businessId: id);
             },
           ),
           GoRoute(

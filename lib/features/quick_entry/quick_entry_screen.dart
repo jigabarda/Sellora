@@ -87,6 +87,16 @@ class _QuickEntryScreenState extends ConsumerState<QuickEntryScreen> {
           ],
           Gap.h24,
           const _Examples(),
+          Gap.h24,
+          // Typing beats a photo for one sale; a photo beats typing for a page
+          // already written down. Both are "get it into the books faster",
+          // which is why the two live on the same screen.
+          OutlinedButton.icon(
+            onPressed: () =>
+                context.push('/business/${widget.businessId}/scan'),
+            icon: const Icon(Icons.document_scanner_outlined, size: 18),
+            label: const Text('Scan a notebook page instead'),
+          ),
         ],
       ),
     );

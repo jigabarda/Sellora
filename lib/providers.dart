@@ -7,6 +7,7 @@ import 'data/backup/backup_service.dart';
 import 'data/insights/insight.dart';
 import 'data/insights/insights_service.dart';
 import 'data/models/entities.dart';
+import 'data/notebook/text_recogniser.dart';
 import 'data/repositories/business_repository.dart';
 import 'data/repositories/category_repository.dart';
 import 'data/repositories/customer_repository.dart';
@@ -62,6 +63,17 @@ final insightsServiceProvider = Provider<InsightsService>(
 final backupServiceProvider = Provider<BackupService>(
   (ref) => BackupService(ref.watch(databaseProvider)),
 );
+
+/// On-device text recognition for photographed ledger pages.
+///
+/// A provider so tests can substitute a recogniser that returns fixed text —
+/// the widget layer must be exercisable without a camera. Disposed with the
+/// scope so the native recogniser does not outlive the app's use of it.
+final textRecogniserProvider = Provider<TextRecogniser>((ref) {
+  final recogniser = MlKitTextRecogniser();
+  ref.onDispose(recogniser.dispose);
+  return recogniser;
+});
 
 final currentUserProvider = FutureProvider.autoDispose<LocalUser?>((ref) async {
   // Watched, not read: signing in or out has to re-resolve this.

@@ -38,6 +38,7 @@ List<({String name, String path})> routesFor(String bizId) => [
       (name: 'refunds', path: '/business/$bizId/refunds'),
       (name: 'new refund', path: '/business/$bizId/refunds/new'),
       (name: 'quick entry', path: '/business/$bizId/quick'),
+      (name: 'scan a page', path: '/business/$bizId/scan'),
       (name: 'insights', path: '/business/$bizId/insights'),
       (name: 'reports', path: '/business/$bizId/reports'),
       (name: 'settings', path: '/business/$bizId/settings'),
