@@ -10,7 +10,7 @@ const _bizId = 'biz_1';
 Future<void> _seedBusiness(Database db) async {
   await db.insert('users', {
     'id': 'usr_1',
-    'email': 'owner@test.com',
+    'username': 'owner',
     'name': 'Owner',
     'salt': 'salt',
     'password_hash': 'hash',
@@ -227,5 +227,34 @@ void main() {
 
     final low = await products.listLowStock(_bizId);
     expect(low.map((p) => p.id), ['prd_1']);
+  });
+
+  test('low stock ignores inactive products', () async {
+    // The Inventory screen and the dashboard both report a low-stock count.
+    // They derived it independently and disagreed: a delisted product with
+    // zero stock counted on one screen and not the other. Both now exclude
+    // inactive, so this pins the repository half of that contract.
+    await db.insert('products', {
+      'id': 'prd_inactive',
+      'business_id': 'biz_1',
+      'category_id': null,
+      'name': 'Discontinued Jug',
+      'description': '',
+      'sku': '',
+      'unit': 'pcs',
+      'price': 250.0,
+      'stock': 0,
+      'track_stock': 1,
+      'active': 0,
+      'created_at': 1,
+    });
+
+    final low = await products.listLowStock('biz_1');
+
+    expect(
+      low.map((p) => p.id),
+      isNot(contains('prd_inactive')),
+      reason: 'a product nobody can sell cannot run out',
+    );
   });
 }

@@ -9,7 +9,7 @@ const _bizId = 'biz_1';
 Future<void> _seedBusiness(Database db) async {
   await db.insert('users', {
     'id': 'usr_1',
-    'email': 'owner@test.com',
+    'username': 'owner',
     'name': 'Owner',
     'salt': 'salt',
     'password_hash': 'hash',

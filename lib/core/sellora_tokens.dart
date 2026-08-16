@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import 'brand_palette.dart';
+
 /// Design tokens for the app, delivered through the theme so every surface
 /// adapts to light and dark automatically.
 ///
@@ -49,10 +51,18 @@ class SelloraTokens extends ThemeExtension<SelloraTokens> {
   /// Tertiary text, placeholders, disabled.
   final Color faint;
 
-  /// Brand accent. Deliberately not green or red so it never competes with
-  /// the success and danger semantics.
+  /// Brand accent, chosen by the user in Settings. The value baked into
+  /// [light] and [dark] is only the default; [withPalette] replaces it.
+  ///
+  /// A palette may well land on a green or a red, which is why nothing in the
+  /// app is allowed to signal success or failure through the accent alone.
   final Color accent;
+
+  /// Tinted background for accent chips and selected rows. Derived from
+  /// [accent] rather than stored per palette.
   final Color accentSoft;
+
+  /// Text and icons drawn on top of [accent].
   final Color onAccent;
 
   final Color success;
@@ -101,6 +111,49 @@ class SelloraTokens extends ThemeExtension<SelloraTokens> {
     warning: Color(0xFFE0A05A),
     warningSoft: Color(0xFF33240F),
   );
+
+  /// Recolours the accent trio for the user's branding choice.
+  ///
+  /// `accentSoft` and `onAccent` are computed instead of stored per palette so
+  /// adding a palette only ever means picking two colours. The soft tint is
+  /// composited over [surface] because that is what it actually sits on.
+  SelloraTokens withPalette(BrandPalette palette, Brightness brightness) {
+    final accent = palette.accentFor(brightness);
+    final isDark = brightness == Brightness.dark;
+    return copyWith(
+      accent: accent,
+      accentSoft: Color.alphaBlend(
+        accent.withValues(alpha: isDark ? 0.22 : 0.12),
+        surface,
+      ),
+      onAccent: onColor(accent),
+    );
+  }
+
+  /// Ink or white — whichever is actually more readable on [background].
+  ///
+  /// This compares real WCAG contrast ratios rather than testing luminance
+  /// against a threshold. A threshold looks equivalent and is not: at the
+  /// midtones where most brand colours live it picks white when dark text is
+  /// twice as readable. Dark indigo scores 3.04:1 against white and 6.07:1
+  /// against ink, and seven of the shipped accents were getting the losing
+  /// choice before this compared the two directly.
+  static Color onColor(Color background) {
+    const ink = Color(0xFF14140F);
+    const white = Color(0xFFFFFFFF);
+    return _contrast(background, ink) > _contrast(background, white)
+        ? ink
+        : white;
+  }
+
+  /// WCAG relative-contrast ratio, from 1 (identical) to 21 (black on white).
+  static double _contrast(Color a, Color b) {
+    final la = a.computeLuminance();
+    final lb = b.computeLuminance();
+    final lighter = la > lb ? la : lb;
+    final darker = la > lb ? lb : la;
+    return (lighter + 0.05) / (darker + 0.05);
+  }
 
   @override
   SelloraTokens copyWith({

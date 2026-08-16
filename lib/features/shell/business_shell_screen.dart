@@ -146,7 +146,7 @@ class _NavItem extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final t = context.t;
-    final color = selected ? t.ink : t.faint;
+    final color = selected ? t.accent : t.faint;
 
     return InkWell(
       onTap: onTap,
@@ -159,7 +159,9 @@ class _NavItem extends StatelessWidget {
             curve: Curves.easeOut,
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
             decoration: BoxDecoration(
-              color: selected ? t.surfaceAlt : Colors.transparent,
+              // The selected pill is the brand tint, so the active tab is
+              // obvious from colour alone rather than only from weight.
+              color: selected ? t.accentSoft : Colors.transparent,
               borderRadius: BorderRadius.circular(Radii.pill),
             ),
             child: Icon(

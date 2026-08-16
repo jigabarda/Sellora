@@ -15,14 +15,14 @@ class LoginScreen extends ConsumerStatefulWidget {
 
 class _LoginScreenState extends ConsumerState<LoginScreen> {
   final _formKey = GlobalKey<FormState>();
-  final _email = TextEditingController();
+  final _username = TextEditingController();
   final _password = TextEditingController();
   bool _busy = false;
   bool _obscure = true;
 
   @override
   void dispose() {
-    _email.dispose();
+    _username.dispose();
     _password.dispose();
     super.dispose();
   }
@@ -58,21 +58,20 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                     ),
                     Gap.h24,
                     TextFormField(
-                      controller: _email,
-                      keyboardType: TextInputType.emailAddress,
-                      autofillHints: const [AutofillHints.email],
+                      controller: _username,
+                      autofillHints: const [AutofillHints.username],
                       textInputAction: TextInputAction.next,
+                      autocorrect: false,
+                      // Usernames are stored lowercase, so leave the keyboard
+                      // out of it rather than silently correcting the user.
+                      textCapitalization: TextCapitalization.none,
                       decoration: const InputDecoration(
-                        labelText: 'Email',
-                        hintText: 'you@example.com',
+                        labelText: 'Username',
+                        prefixText: '@',
                       ),
-                      validator: (v) {
-                        if (v == null || v.trim().isEmpty) {
-                          return 'Enter your email';
-                        }
-                        if (!v.contains('@')) return 'Enter a valid email';
-                        return null;
-                      },
+                      validator: (v) => (v == null || v.trim().isEmpty)
+                          ? 'Enter your username'
+                          : null,
                     ),
                     Gap.h12,
                     TextFormField(
@@ -133,7 +132,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
     setState(() => _busy = true);
     try {
       await ref.read(authControllerProvider.notifier).login(
-            email: _email.text,
+            username: _username.text,
             password: _password.text,
           );
       if (!mounted) return;

@@ -1,6 +1,6 @@
 # Sellora Mobile Project Guide
 
-Last updated: 2026-08-06 (design system + dark mode)
+Last updated: 2026-08-16 (username auth, brand palettes, mobile welcome screen)
 
 ## Purpose
 
@@ -60,15 +60,26 @@ The mobile app is not a webview and should not depend on Supabase for core use. 
 
 We are cloning `SalesManagementSystem` into `sellora_mobile`.
 
-The current focus is making the Flutter app follow the Sellora web app, beginning with the public landing page UI and continuing through the authenticated dashboard/business tools. The landing page should match the web mobile design: compact sticky nav, "Sellora" brand, hero copy, black primary buttons, trust badges, feature cards, three-step setup section, dark CTA band, and footer.
+The current focus is the authenticated business tools. The **logged-out
+experience no longer clones the web**: the marketing landing page has been
+replaced by a native swipeable welcome screen (see Welcome Screen), and login
+is by username rather than email. Both are deliberate departures — see
+non-negotiable 6.
 
-Clone first, enhance second. New features are allowed only after the matching web feature is already cloned or when the enhancement does not interrupt parity work. If there is a conflict between a new idea and web parity, web parity wins until the clone is complete.
+Clone first, enhance second still holds for everything behind the login.
+New features are allowed only after the matching web feature is already cloned
+or when the enhancement does not interrupt parity work. Where a new idea
+conflicts with web parity inside the workspace, web parity wins until the clone
+is complete.
 
 ## Mobile Web Parity Reference
 
 The full mobile view of `SalesManagementSystem` has been reviewed from screenshots. Future implementation should match these screens before adding enhancements:
 
-- Login page: vertically centered card, Sellora title, "Welcome back", email/password fields, black Sign In button, sign-up link.
+- Login page: vertically centered card, Sellora title, "Welcome back", sign-up
+  link. **Diverges deliberately**: the field is a username, not an email, and
+  the button carries the brand accent rather than black. See Accounts And
+  Usernames.
 - Mobile sidebar/drawer: Sellora brand, business switcher card, Menu group, Settings group, Super Admin group, Sign Out footer, blurred/dimmed page backdrop.
 - Dashboard: top menu trigger, business name/subtitle, metric cards, product performance card, recent sales card, quick action card.
 - Products: page title/subtitle, Categories button, Add Product button, product list table/card with search, category, price, stock, unit, status.
@@ -148,9 +159,10 @@ network. Verify with the merged manifest under
 `/business/:businessId/settings` is the local counterpart to the web `/settings`
 page. Reachable from the drawer ("Business Settings") and the More tab.
 
-Implemented: Account (email read-only, editable name, change password),
-Business Profile (name, type, address, phone), Data (link to Backup & Restore),
-and a Danger Zone that deletes the business after the user types its exact name.
+Implemented: Account (username read-only, editable name, change password),
+Business Profile (name, type, address, phone), Appearance (light/dark/auto plus
+the brand colour picker), Data (link to Backup & Restore), and a Danger Zone
+that deletes the business after the user types its exact name.
 
 Intentional deviations from the web page, all forced by the offline model:
 
@@ -176,6 +188,29 @@ trips its "exactly one matching item" assertion.
 
 Covered by `test/business_repository_test.dart` and `test/auth_controller_test.dart`.
 
+## Accounts And Usernames
+
+Accounts are identified by `users.username`, not an email address. An email
+bought nothing offline: there is no server to send to, nothing to verify, and
+no password-reset flow it could power — it was a login field wearing a
+misleading label.
+
+- `AuthController.normalizeUsername` trims and lowercases. Every read and write
+  goes through it, which is what lets the column use a plain UNIQUE index
+  instead of a case-insensitive one.
+- `AuthController.describeUsernameProblem` is the single source of the rule
+  (3–20 characters; letters, numbers, dots and underscores; must start with a
+  letter or number). The sign-up form calls it rather than restating it, so the
+  form and the database cannot drift apart.
+- Existing v4 accounts were converted in place, deriving a username from the
+  local part of the address and suffixing collisions by registration order —
+  `james@gmail.com` keeps `james`, a later `james@work.com` becomes `james2`.
+  An address that sanitises down to nothing usable falls back to `owner`
+  rather than failing the upgrade and locking the user out.
+
+Covered by `test/auth_controller_test.dart` and the `v4 -> v5` group in
+`test/migration_test.dart`.
+
 ## Design System
 
 Every screen reads from one system. There are no hardcoded colours in
@@ -186,12 +221,40 @@ left the app with two incompatible looks before.
   and a dark palette. Read them with `context.t` (`context.t.ink`,
   `context.t.line`, `context.t.danger`...).
 - **Type** comes from `context.text` (`titleSmall`, `bodyLarge`, `labelSmall`).
-  The platform UI font is used throughout; serif is reserved for the `Sellora`
-  wordmark via `SelloraWordmark`.
+  Two bundled families split by role: **Plus Jakarta Sans** (`kBrandFontFamily`)
+  for the wordmark, headings and display figures, **Inter** (`kBodyFontFamily`)
+  for body copy, labels and every table of numbers. Anything above 18pt is
+  Jakarta, at or below is Inter. Only the weights listed under `fonts:` in
+  `pubspec.yaml` exist — asking for one that is not bundled (w900, say) makes
+  Flutter synthesise it, which visibly smears the letterforms.
 - **Spacing and radii** come from `Gap` and `Radii`. Prefer `Gap.h12` over a
   raw `SizedBox(height: 12)`.
-- **The accent is indigo**, deliberately not green or red so it never competes
-  with the success and danger semantics.
+- **The accent is user-configurable** (Settings → Appearance → Brand colour),
+  one of eighteen palettes in `brand_palette.dart`, persisted locally. Only the
+  accent moves: canvas, ink and the success/danger semantics are fixed across
+  every palette, because a business branding the app Rose still needs a red
+  that unambiguously reads as an error. Nothing may signal success or failure
+  through the accent alone.
+- **`accentSoft` and `onAccent` are computed, never stored per palette.**
+  `SelloraTokens.withPalette` composites the soft tint over `surface` and hands
+  `onAccent` to `onColor`, which compares contrast ratios — see Colour Contrast
+  below. Adding a palette means choosing two colours, nothing else.
+- **`IconTile` is where most of the app's colour lives** — an icon over a tint
+  of its own hue. Prefer it to colouring a bare glyph, and keep the figure or
+  label beside it in ink: a wall of coloured numbers is harder to scan than one
+  coloured badge against plain text.
+- **Money in is `success`, money out is `danger`.** Sales rows, the Revenue
+  metric, and stock going up are green; expenses, refunds, and stock going down
+  are red. A sales list and an expenses list must be tellable apart at a
+  glance, and the two screens previously used the same grey.
+- **`InitialsTile` colours customer and product rows by name.** The hue is
+  decoration, never status — the same name must come back the same colour on
+  every launch, so it cannot also track anything that changes. It is generated
+  rather than taken from the semantic tokens, because a customer tinted
+  `danger` would read as a problem with that customer.
+- **`StatTile` is the one figure-with-a-label card.** The dashboard, Inventory
+  and Reports each had their own copy; they had drifted on icon size, spacing,
+  and whether an over-long value clipped.
 - **Shared widgets** in `sellora_ui.dart`: `SelloraCard`, `SectionHeader`,
   `SelloraPill`, `EmptyState`, `LoadingView`, `ErrorView`, `ButtonSpinner`,
   `DetailRow`, `SelloraSearchField`, plus `showToast` and
@@ -202,12 +265,71 @@ left the app with two incompatible looks before.
 - **Buttons, inputs, dialogs, sheets, and snackbars** are themed centrally in
   `sellora_theme.dart`. A screen should almost never pass a `style:`.
 
-`landing_screen.dart` carries a file-level `ignore_for_file:
-prefer_const_constructors`. Nearly every widget on that page reads a token, so
-it cannot be const; the ignore beats scattering per-line ignores that would go
-stale. On the inverted CTA band, `t.ink` is the background and `t.canvas` the
-foreground — that pair inverts correctly in both themes, where a hardcoded
-white would have gone white-on-white in dark mode.
+There are no per-screen button overrides left. Every primary action is a plain
+`FilledButton` and therefore carries the brand accent. The landing page used to
+override its CTAs back to `t.ink`, which meant a black "Get Started" sat one tap
+away from an accent-coloured "Sign in" and the two looked like different
+products. If a screen appears to need its own button colour, the answer is
+almost always a token, not a `style:`.
+
+## Welcome Screen
+
+`landing_screen.dart` is a swipeable four-slide intro, not a marketing page.
+
+It was a direct port of the web landing page — hero, feature grid, steps, CTA
+band, footer, all in one long scroll. That shape earns its keep on the web,
+where a visitor arrives cold from a search result and has to be convinced.
+Someone who already installed the app is past that, and making them scroll a
+sales pitch to reach the sign-up button is friction dressed as persuasion.
+
+- One idea per slide, with the primary CTA pinned below the pager, so the user
+  can act at any point instead of swiping to the end first.
+- The artwork is drawn, not an asset: a tinted disc sized from the available
+  space, the feature's icon, and two floating chips. It recolours with the
+  brand palette, works in both themes, and adds nothing to the APK.
+- The active page indicator changes *width*, not just colour. The accent is
+  user-configurable and some choices sit close to `lineStrong`, so shape has to
+  carry the state.
+- Slides fade and scale toward their settled position using the live
+  `PageController` offset, which is why `_page` is a double rather than an int.
+
+## Seeded Device Database
+
+`test/tools/seed_device_db.dart` writes a populated `sellora.db` so the list
+screens can be reviewed on a device with real content instead of empty states.
+The filename omits the `_test` suffix on purpose, so `flutter test` never picks
+it up and no ordinary run writes files.
+
+    flutter test test/tools/seed_device_db.dart
+    adb root
+    adb push build/seed/sellora.db /sdcard/sellora.db
+    adb shell "cp /sdcard/sellora.db /data/data/com.sellora.mobile/app_flutter/sellora.db"
+    adb shell "chown <uid>:<uid> /data/data/com.sellora.mobile/app_flutter/sellora.db"
+
+Then sign in as `juandc` / `secret123`. Two traps:
+
+- **Open it through `SelloraDatabase.openOptions()`.** Building the file with a
+  hand-written `OpenDatabaseOptions(version: 1)` stamps `user_version` at 1, so
+  the app runs the v1 migration over a schema that already has every table,
+  throws inside `main` before `runApp`, and hangs with no window — surfacing as
+  "Sellora isn't responding" rather than anything resembling a crash.
+- **`flutter install` wipes `app_flutter/`.** Push the database *after*
+  installing and after the app has launched once, or the copy lands in a
+  directory that is about to be deleted.
+
+## Colour Contrast
+
+`SelloraTokens.onColor` picks ink or white for text on a coloured background by
+comparing real WCAG contrast ratios. It does **not** test luminance against a
+threshold, which is what it did first and which was wrong: at the midtones
+where most brand colours live, a threshold picks white when dark text is twice
+as readable. Dark indigo scores 3.04:1 against white and 6.07:1 against ink,
+and seven of the eighteen accents were getting the losing option.
+
+`test/brand_palette_test.dart` asserts every palette in both themes clears
+4.5:1 and, separately, that the chosen foreground beats the one not chosen.
+Reinstating the threshold fails 24 of those. Any new accent must pass without
+special-casing — if it cannot, the colour is wrong, not the test.
 
 ## Widget Smoke Tests
 
@@ -295,7 +417,7 @@ can drive upgrade paths against hand-built old schemas. Every schema change
 should add a case there, upgrading from each still-plausible old version — not
 just the newest one.
 
-Two traps this has already caught:
+Three traps this has already caught:
 
 - **Do not index a column in `_createOperationalTables` that a later migration
   step adds.** That method runs for a v1 install *before* the v3 step adds
@@ -303,7 +425,21 @@ Two traps this has already caught:
   bricked the upgrade. Index a column from whoever owns its table.
 - **Guard ALTERs that a `CREATE TABLE` in an earlier step already covers.** The
   v4 product columns are skipped when `oldVersion < 2`, because
-  `_createOperationalTables` builds `products` with them already present.
+  `_createOperationalTables` builds `products` with them already present. The
+  v5 username conversion is guarded the same way on `oldVersion >= 3`.
+- **Rebuilding a table requires foreign keys OFF, or the upgrade silently
+  destroys data.** With enforcement on, `DROP TABLE users` performs an implicit
+  delete of every row, which fires `businesses.user_id ON DELETE CASCADE` and
+  takes the user's entire dataset with it. `openOptions()` therefore disables
+  the pragma in `onConfigure` and re-enables it in `onOpen`; it cannot be
+  toggled inside `onUpgrade`, where sqflite's transaction makes the statement a
+  silent no-op. Flip that one line and `migration_test.dart` fails with every
+  business gone — which is exactly what the test is for.
+
+Because the pragma sequence *is* the safety mechanism, a migration that
+restructures a table must be tested through `SelloraDatabase.openOptions()`
+against a real temp file, not by calling `migrate()` directly. Calling
+`migrate()` in isolation skips the very thing that makes it safe.
 
 ## Android Application Id
 
@@ -316,7 +452,7 @@ orphans every existing install's database. The launcher label is `Sellora`.
 
 | Web concept/table | Mobile local equivalent | Notes |
 | --- | --- | --- |
-| Supabase auth users / profiles | `users` table + SharedPreferences session | Local-only auth. No Supabase dependency in mobile core. |
+| Supabase auth users / profiles | `users` table + SharedPreferences session | Local-only auth, keyed by `username` since schema v5. No email is collected — there is no server to send mail to and nothing to verify against. No Supabase dependency in mobile core. |
 | `tenants` | `businesses` | Mobile uses "business" wording and `business_id`. |
 | `tenant_users` | Simplified `businesses.user_id` currently | Future team/role support may need a local membership table. |
 | `categories` | `categories` | Managed from the categories screen; products reference one optionally. |
@@ -500,6 +636,25 @@ A feature is done when:
 - It refreshes affected screens after writes.
 - It has been formatted and analyzed.
 - Any intentional deviation from the web app is documented.
+
+## Smart Insights (designed, not built)
+
+`docs/INSIGHTS_DESIGN.md` specifies an offline "what should I do today?" feature
+built from arithmetic rather than a language model — stock run-out forecasts,
+profit attribution, day-of-week patterns, dead stock, refund concentration.
+
+Two things in that document are the point of it, and are easy to lose:
+
+- **Every rule carries a minimum-evidence gate, and the gate is part of the
+  rule.** An insight fired from two data points is as bad as a hallucinated one,
+  because the user cannot tell it apart from a well-founded one. When the gate
+  fails the insight does not appear — it is never softened into a hedge.
+- **Every insight states its numbers.** Not "you're losing money" but "₱18,350 in
+  expenses against ₱605 in sales over 7 days."
+
+It needs no schema change, so it can land before, between, or after the feature
+work below. The same document records why an on-device or cloud LLM was rejected
+for now, so that decision does not get relitigated from scratch.
 
 ## Immediate Next Best Work
 

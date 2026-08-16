@@ -163,14 +163,7 @@ class _CustomerCard extends StatelessWidget {
       onTap: onEdit,
       child: Row(
         children: [
-          CircleAvatar(
-            radius: 19,
-            backgroundColor: t.accentSoft,
-            child: Text(
-              _initials(customer.name),
-              style: context.text.labelMedium?.copyWith(color: t.accent),
-            ),
-          ),
+          InitialsTile(label: customer.name),
           Gap.w12,
           Expanded(
             child: Column(
@@ -205,14 +198,5 @@ class _CustomerCard extends StatelessWidget {
         ],
       ),
     );
-  }
-
-  static String _initials(String name) {
-    final parts =
-        name.trim().split(RegExp(r'\s+')).where((p) => p.isNotEmpty).toList();
-    if (parts.isEmpty) return '?';
-    if (parts.length == 1) return parts.first.characters.first.toUpperCase();
-    return (parts.first.characters.first + parts.last.characters.first)
-        .toUpperCase();
   }
 }

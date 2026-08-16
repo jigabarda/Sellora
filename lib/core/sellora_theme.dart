@@ -1,20 +1,31 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import 'brand_palette.dart';
 import 'sellora_tokens.dart';
 
-/// Serif is reserved for the "Sellora" wordmark. Everything else uses the
-/// platform UI font, which is what makes the app feel native rather than
-/// like a themed website.
-const kBrandFontFamily = 'serif';
+/// Plus Jakarta Sans carries the wordmark, headings and the big dashboard
+/// figures. Its wider apertures and taller x-height give the app a voice at
+/// large sizes, which is where a neutral UI face has nothing to say.
+const kBrandFontFamily = 'PlusJakartaSans';
 
-ThemeData buildSelloraTheme(Brightness brightness) {
+/// Inter runs body copy, labels and every table of numbers. It was drawn for
+/// small sizes on screen and stays even at 12pt where Jakarta starts to feel
+/// loose.
+const kBodyFontFamily = 'Inter';
+
+ThemeData buildSelloraTheme(
+  Brightness brightness, [
+  BrandPalette palette = BrandPalette.fallback,
+]) {
   final isDark = brightness == Brightness.dark;
-  final t = isDark ? SelloraTokens.dark : SelloraTokens.light;
+  final t = (isDark ? SelloraTokens.dark : SelloraTokens.light)
+      .withPalette(palette, brightness);
 
   final base = ThemeData(
     useMaterial3: true,
     brightness: brightness,
+    fontFamily: kBodyFontFamily,
     scaffoldBackgroundColor: t.canvas,
     colorScheme: ColorScheme.fromSeed(
       seedColor: t.accent,
@@ -81,8 +92,10 @@ ThemeData buildSelloraTheme(Brightness brightness) {
     ),
     filledButtonTheme: FilledButtonThemeData(
       style: FilledButton.styleFrom(
-        backgroundColor: t.ink,
-        foregroundColor: t.canvas,
+        // Primary actions carry the brand colour. The landing page overrides
+        // this back to ink for its editorial hero, which is deliberate.
+        backgroundColor: t.accent,
+        foregroundColor: t.onAccent,
         disabledBackgroundColor: t.lineStrong,
         disabledForegroundColor: t.faint,
         minimumSize: const Size(0, 50),
@@ -112,8 +125,10 @@ ThemeData buildSelloraTheme(Brightness brightness) {
       ),
     ),
     floatingActionButtonTheme: FloatingActionButtonThemeData(
-      backgroundColor: t.ink,
-      foregroundColor: t.canvas,
+      // The FAB is the one control on a list screen that has to be found
+      // instantly, so it carries the brand colour rather than plain ink.
+      backgroundColor: t.accent,
+      foregroundColor: t.onAccent,
       elevation: 0,
       focusElevation: 0,
       hoverElevation: 0,
@@ -198,29 +213,50 @@ OutlineInputBorder _border(Color color, {double width = 1}) {
 
 /// A tighter scale than Material's default — business screens pack a lot of
 /// numbers, so the steps between sizes need to stay small and deliberate.
+///
+/// The two families split by role rather than by whim. Anything above 18pt is
+/// Jakarta, where its character reads as deliberate; anything at or below is
+/// Inter, which stays legible at the sizes a table actually uses. Only the
+/// weights bundled in `pubspec.yaml` appear here — asking for one that is not
+/// bundled makes Flutter synthesise it, and a faked bold is visibly worse than
+/// a real one.
 TextTheme _textTheme(TextTheme base, SelloraTokens t) {
-  TextStyle s(double size, FontWeight weight, {Color? color, double? height}) {
+  TextStyle display(double size, FontWeight weight, {double? height}) {
     return TextStyle(
+      fontFamily: kBrandFontFamily,
+      fontSize: size,
+      fontWeight: weight,
+      color: t.ink,
+      height: height,
+      // Large type looks gappy at default tracking; the bigger it gets, the
+      // more it needs pulling in.
+      letterSpacing: size >= 26 ? -0.9 : -0.5,
+    );
+  }
+
+  TextStyle body(double size, FontWeight weight, {Color? color, double? h}) {
+    return TextStyle(
+      fontFamily: kBodyFontFamily,
       fontSize: size,
       fontWeight: weight,
       color: color ?? t.ink,
-      height: height,
-      letterSpacing: size >= 24 ? -0.6 : (size >= 18 ? -0.3 : -0.1),
+      height: h,
+      letterSpacing: size <= 12.5 ? 0 : -0.1,
     );
   }
 
   return base.copyWith(
-    displaySmall: s(30, FontWeight.w800, height: 1.15),
-    headlineMedium: s(26, FontWeight.w800, height: 1.15),
-    headlineSmall: s(22, FontWeight.w700, height: 1.2),
-    titleLarge: s(19, FontWeight.w700, height: 1.25),
-    titleMedium: s(16, FontWeight.w700, height: 1.3),
-    titleSmall: s(14, FontWeight.w600, height: 1.3),
-    bodyLarge: s(15, FontWeight.w500, height: 1.4),
-    bodyMedium: s(14, FontWeight.w400, color: t.muted, height: 1.45),
-    bodySmall: s(12.5, FontWeight.w400, color: t.muted, height: 1.4),
-    labelLarge: s(14.5, FontWeight.w600),
-    labelMedium: s(12.5, FontWeight.w600, color: t.muted),
-    labelSmall: s(11, FontWeight.w600, color: t.faint),
+    displaySmall: display(32, FontWeight.w800, height: 1.1),
+    headlineMedium: display(26, FontWeight.w800, height: 1.15),
+    headlineSmall: display(22, FontWeight.w700, height: 1.2),
+    titleLarge: display(19, FontWeight.w700, height: 1.25),
+    titleMedium: body(16, FontWeight.w700, h: 1.3),
+    titleSmall: body(14, FontWeight.w600, h: 1.3),
+    bodyLarge: body(15, FontWeight.w500, h: 1.4),
+    bodyMedium: body(14, FontWeight.w400, color: t.muted, h: 1.45),
+    bodySmall: body(12.5, FontWeight.w400, color: t.muted, h: 1.4),
+    labelLarge: body(14.5, FontWeight.w600),
+    labelMedium: body(12.5, FontWeight.w600, color: t.muted),
+    labelSmall: body(11, FontWeight.w600, color: t.faint),
   );
 }

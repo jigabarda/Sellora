@@ -25,7 +25,7 @@ void main() {
     auth = AuthController(db, await SharedPreferences.getInstance());
     await auth.register(
       name: 'Test Owner',
-      email: 'Owner@Test.com',
+      username: '  Owner  ',
       password: 'secret123',
     );
   });
@@ -37,7 +37,7 @@ void main() {
     final user = await auth.currentUser();
 
     expect(user, isNotNull);
-    expect(user!.email, 'owner@test.com');
+    expect(user!.username, 'owner');
     expect(user.name, 'Test Owner');
     expect(user.id, auth.state.userId);
   });
@@ -66,10 +66,10 @@ void main() {
 
     await auth.logout();
     await expectLater(
-      auth.login(email: 'owner@test.com', password: 'secret123'),
+      auth.login(username: 'owner', password: 'secret123'),
       throwsA(isA<AuthException>()),
     );
-    await auth.login(email: 'owner@test.com', password: 'brandnew456');
+    await auth.login(username: 'owner', password: 'brandnew456');
     expect(auth.isLoggedIn, isTrue);
   });
 
@@ -97,7 +97,7 @@ void main() {
 
     // The original credential must still work after a failed attempt.
     await auth.logout();
-    await auth.login(email: 'owner@test.com', password: 'secret123');
+    await auth.login(username: 'owner', password: 'secret123');
     expect(auth.isLoggedIn, isTrue);
   });
 

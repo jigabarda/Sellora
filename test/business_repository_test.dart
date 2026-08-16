@@ -15,7 +15,7 @@ Future<void> _seedBusiness(
       'users',
       {
         'id': userId,
-        'email': '$userId@test.com',
+        'username': userId,
         'name': 'Owner',
         'salt': 'salt',
         'password_hash': 'hash',

@@ -16,7 +16,7 @@ class RegisterScreen extends ConsumerStatefulWidget {
 class _RegisterScreenState extends ConsumerState<RegisterScreen> {
   final _formKey = GlobalKey<FormState>();
   final _name = TextEditingController();
-  final _email = TextEditingController();
+  final _username = TextEditingController();
   final _password = TextEditingController();
   final _confirm = TextEditingController();
   bool _busy = false;
@@ -25,7 +25,7 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
   @override
   void dispose() {
     _name.dispose();
-    _email.dispose();
+    _username.dispose();
     _password.dispose();
     _confirm.dispose();
     super.dispose();
@@ -78,20 +78,27 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
                     ),
                     Gap.h12,
                     TextFormField(
-                      controller: _email,
-                      keyboardType: TextInputType.emailAddress,
-                      autofillHints: const [AutofillHints.email],
+                      controller: _username,
+                      autofillHints: const [AutofillHints.newUsername],
                       textInputAction: TextInputAction.next,
+                      autocorrect: false,
+                      textCapitalization: TextCapitalization.none,
                       decoration: const InputDecoration(
-                        labelText: 'Email',
-                        hintText: 'you@example.com',
+                        labelText: 'Username',
+                        prefixText: '@',
+                        helperText:
+                            'How you sign in. Letters, numbers, . and _',
                       ),
+                      // Defers to the controller's own rule rather than
+                      // restating it, so the form and the database can never
+                      // disagree about what a valid username is.
                       validator: (v) {
-                        if (v == null || v.trim().isEmpty) {
-                          return 'Enter your email';
-                        }
-                        if (!v.contains('@')) return 'Enter a valid email';
-                        return null;
+                        final normalized =
+                            AuthController.normalizeUsername(v ?? '');
+                        if (normalized.isEmpty) return 'Choose a username';
+                        return AuthController.describeUsernameProblem(
+                          normalized,
+                        );
                       },
                     ),
                     Gap.h12,
@@ -166,7 +173,7 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
     try {
       await ref.read(authControllerProvider.notifier).register(
             name: _name.text,
-            email: _email.text,
+            username: _username.text,
             password: _password.text,
           );
       if (!mounted) return;

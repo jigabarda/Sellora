@@ -20,20 +20,20 @@ class AuthState {
 class LocalUser {
   const LocalUser({
     required this.id,
-    required this.email,
+    required this.username,
     required this.name,
     required this.createdAt,
   });
 
   final String id;
-  final String email;
+  final String username;
   final String name;
   final DateTime createdAt;
 
   factory LocalUser.fromMap(Map<String, Object?> map) {
     return LocalUser(
       id: map['id']! as String,
-      email: map['email']! as String,
+      username: map['username']! as String,
       name: map['name']! as String,
       createdAt: DateTime.fromMillisecondsSinceEpoch(map['created_at']! as int),
     );
@@ -72,16 +72,19 @@ class AuthController extends StateNotifier<AuthState> {
     }
   }
 
-  Future<void> login({required String email, required String password}) async {
-    final normalized = email.trim().toLowerCase();
+  Future<void> login({
+    required String username,
+    required String password,
+  }) async {
+    final normalized = normalizeUsername(username);
     final rows = await _db.query(
       'users',
-      where: 'email = ?',
+      where: 'username = ?',
       whereArgs: [normalized],
       limit: 1,
     );
     if (rows.isEmpty) {
-      throw AuthException('No account found for that email.');
+      throw AuthException('No account found for that username.');
     }
     final row = rows.first;
     final id = row['id']! as String;
@@ -97,24 +100,25 @@ class AuthController extends StateNotifier<AuthState> {
 
   Future<void> register({
     required String name,
-    required String email,
+    required String username,
     required String password,
   }) async {
     if (password.length < 6) {
       throw AuthException('Password must be at least 6 characters.');
     }
-    final normalized = email.trim().toLowerCase();
-    if (normalized.isEmpty || !normalized.contains('@')) {
-      throw AuthException('Enter a valid email.');
+    final normalized = normalizeUsername(username);
+    final invalid = describeUsernameProblem(normalized);
+    if (invalid != null) {
+      throw AuthException(invalid);
     }
     final existing = await _db.query(
       'users',
-      where: 'email = ?',
+      where: 'username = ?',
       whereArgs: [normalized],
       limit: 1,
     );
     if (existing.isNotEmpty) {
-      throw AuthException('An account already exists for that email.');
+      throw AuthException('That username is already taken.');
     }
 
     final id = newLocalId('usr');
@@ -124,7 +128,7 @@ class AuthController extends StateNotifier<AuthState> {
     await _db.transaction((txn) async {
       await txn.insert('users', {
         'id': id,
-        'email': normalized,
+        'username': normalized,
         'name': name.trim(),
         'salt': salt,
         'password_hash': hash,
@@ -208,6 +212,33 @@ class AuthController extends StateNotifier<AuthState> {
       where: 'id = ?',
       whereArgs: [id],
     );
+  }
+
+  /// Trims and lowercases so "  James " and "james" are the same account.
+  ///
+  /// Every read and write of `username` goes through this, which is what lets
+  /// the column get away with a plain UNIQUE index instead of a case-insensitive
+  /// one.
+  static String normalizeUsername(String raw) => raw.trim().toLowerCase();
+
+  static final _usernamePattern = RegExp(r'^[a-z0-9][a-z0-9._]*$');
+
+  /// Returns why [username] is unacceptable, or null when it is fine.
+  ///
+  /// Shared with the sign-up form so the field can show the same rule the
+  /// controller enforces, rather than the two drifting apart. Expects an
+  /// already-normalised value.
+  static String? describeUsernameProblem(String username) {
+    if (username.length < 3) {
+      return 'Username must be at least 3 characters.';
+    }
+    if (username.length > 20) {
+      return 'Username must be 20 characters or fewer.';
+    }
+    if (!_usernamePattern.hasMatch(username)) {
+      return 'Use letters, numbers, dots and underscores, starting with a letter or number.';
+    }
+    return null;
   }
 
   static String _randomSalt() {

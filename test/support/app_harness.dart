@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
 import 'package:sellora_mobile/app.dart';
+import 'package:sellora_mobile/core/brand_palette.dart';
 import 'package:sellora_mobile/core/theme_controller.dart';
 import 'package:sellora_mobile/data/auth/auth_controller.dart';
 import 'package:sellora_mobile/data/db/sellora_database.dart';
@@ -40,11 +41,14 @@ const seededExpenseId = 'exp_seed';
 /// Boots the real app against an in-memory database with a signed-in account.
 ///
 /// [withData] seeds one of every record so screens render their populated
-/// state; pass false to exercise the empty states instead.
+/// state; pass false to exercise the empty states instead. [palette] brands
+/// the run, so a test can prove the app still renders under a non-default
+/// accent.
 Future<AppHarness> bootApp(
   WidgetTester tester, {
   bool withData = true,
   Brightness brightness = Brightness.light,
+  BrandPalette palette = BrandPalette.fallback,
 }) async {
   const businessId = 'biz_seed';
   late final Database db;
@@ -69,7 +73,7 @@ Future<AppHarness> bootApp(
     final auth = AuthController(db, prefs);
     await auth.register(
       name: 'Test Owner',
-      email: 'owner@test.com',
+      username: 'owner',
       password: 'secret123',
     );
 
@@ -89,12 +93,15 @@ Future<AppHarness> bootApp(
     await themeController.set(
       brightness == Brightness.dark ? ThemeMode.dark : ThemeMode.light,
     );
+    final paletteController = BrandPaletteController(prefs);
+    await paletteController.set(palette);
 
     container = ProviderContainer(
       overrides: [
         databaseProvider.overrideWith((ref) => db),
         authControllerProvider.overrideWith((ref) => auth),
         themeControllerProvider.overrideWith((ref) => themeController),
+        brandPaletteProvider.overrideWith((ref) => paletteController),
       ],
     );
   });

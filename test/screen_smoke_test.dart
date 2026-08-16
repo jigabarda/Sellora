@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:sellora_mobile/core/brand_palette.dart';
 import 'package:sellora_mobile/providers.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 
@@ -107,4 +108,18 @@ void main() {
     await openRoute(tester, harness, '/business/biz_missing/products');
     await openRoute(tester, harness, '/business/biz_missing/settings');
   });
+
+  // The accent feeds computed values — `accentSoft` is composited and
+  // `onAccent` is chosen by luminance — so a palette at the light end of the
+  // range exercises a different branch than the default indigo does.
+  for (final palette in [BrandPalette.amber, BrandPalette.graphite]) {
+    testWidgets('every screen builds branded ${palette.name}', (tester) async {
+      final harness = await bootApp(tester, palette: palette);
+      addTearDown(harness.dispose);
+
+      for (final route in routesFor(harness.businessId)) {
+        await openRoute(tester, harness, route.path);
+      }
+    });
+  }
 }

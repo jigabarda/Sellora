@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../constants/business_types.dart';
+import '../../core/brand_palette.dart';
 import '../../core/sellora_ui.dart';
 import '../../core/theme_controller.dart';
 import '../../data/auth/auth_controller.dart';
@@ -104,10 +106,11 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
             ),
             Gap.h16,
             TextFormField(
-              initialValue: user.email,
+              initialValue: user.username,
               enabled: false,
               decoration: const InputDecoration(
-                labelText: 'Email',
+                labelText: 'Username',
+                prefixText: '@',
                 helperText:
                     'Identifies this local account and cannot be changed.',
               ),
@@ -298,6 +301,23 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
             showSelectedIcon: false,
             onSelectionChanged: (s) =>
                 ref.read(themeControllerProvider.notifier).set(s.first),
+          ),
+          Gap.h24,
+          Text('Brand colour', style: context.text.titleSmall),
+          Gap.h4,
+          Text(
+            'Used for highlights, links and the active tab.',
+            style: context.text.bodySmall,
+          ),
+          Gap.h12,
+          _PalettePicker(
+            selected: ref.watch(brandPaletteProvider),
+            onSelected: (p) {
+              // The whole app recolours on this tap. A confirming tick makes
+              // that feel chosen rather than accidental.
+              HapticFeedback.selectionClick();
+              ref.read(brandPaletteProvider.notifier).set(p);
+            },
           ),
         ],
       ),
@@ -506,5 +526,107 @@ class _ChangePasswordDialogState extends ConsumerState<_ChangePasswordDialog> {
     } finally {
       if (mounted) setState(() => _saving = false);
     }
+  }
+}
+
+/// Swatch grid for choosing the brand accent.
+///
+/// Each swatch previews the colour as it will appear in the *current* theme,
+/// not a single canonical version — picking "Amber" in dark mode should show
+/// the lighter cut the app will actually use, or the choice looks wrong the
+/// moment it applies.
+class _PalettePicker extends StatelessWidget {
+  const _PalettePicker({required this.selected, required this.onSelected});
+
+  final BrandPalette selected;
+  final ValueChanged<BrandPalette> onSelected;
+
+  @override
+  Widget build(BuildContext context) {
+    final brightness = Theme.of(context).brightness;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Wrap(
+          spacing: Gap.md,
+          runSpacing: Gap.md,
+          children: [
+            for (final palette in BrandPalette.values)
+              _Swatch(
+                palette: palette,
+                colour: palette.accentFor(brightness),
+                isSelected: palette == selected,
+                onTap: () => onSelected(palette),
+              ),
+          ],
+        ),
+        Gap.h12,
+        // The grid alone cannot say which swatch is which, and a tooltip needs
+        // a long-press nobody will discover. Naming the current choice costs
+        // one line and removes the guesswork.
+        Text(
+          selected.label,
+          style: context.text.labelMedium?.copyWith(color: context.t.ink),
+        ),
+      ],
+    );
+  }
+}
+
+class _Swatch extends StatelessWidget {
+  const _Swatch({
+    required this.palette,
+    required this.colour,
+    required this.isSelected,
+    required this.onTap,
+  });
+
+  final BrandPalette palette;
+  final Color colour;
+  final bool isSelected;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final t = context.t;
+
+    return Semantics(
+      button: true,
+      selected: isSelected,
+      label: palette.label,
+      child: Tooltip(
+        message: palette.label,
+        child: InkWell(
+          onTap: onTap,
+          customBorder: const CircleBorder(),
+          child: Container(
+            width: 40,
+            height: 40,
+            decoration: BoxDecoration(
+              color: colour,
+              shape: BoxShape.circle,
+              // The ring sits outside the fill so the colour itself is never
+              // clipped, and it uses the canvas rather than a fixed white so
+              // it reads as a gap in both themes.
+              border: Border.all(
+                color: isSelected ? t.ink : t.line,
+                width: isSelected ? 2.5 : 1,
+              ),
+            ),
+            child: isSelected
+                ? Icon(
+                    Icons.check,
+                    size: 18,
+                    // Same contrast rule the theme uses for text on the
+                    // accent, so the tick never disagrees with the button it
+                    // is previewing.
+                    color: SelloraTokens.onColor(colour),
+                  )
+                : null,
+          ),
+        ),
+      ),
+    );
   }
 }
