@@ -15,6 +15,7 @@ import 'features/customers/customers_screen.dart';
 import 'features/dashboard/dashboard_screen.dart';
 import 'features/expenses/expenses_screen.dart';
 import 'features/home/home_screen.dart';
+import 'features/insights/insights_screen.dart';
 import 'features/inventory/inventory_screen.dart';
 import 'features/more/more_screen.dart';
 import 'features/products/product_form_screen.dart';
@@ -301,6 +302,15 @@ final goRouterProvider = Provider<GoRouter>((ref) {
                 },
               ),
             ],
+          ),
+          GoRoute(
+            path: 'insights',
+            parentNavigatorKey: rootNavigatorKey,
+            name: 'business_insights',
+            builder: (context, state) {
+              final id = state.pathParameters['businessId']!;
+              return InsightsScreen(businessId: id);
+            },
           ),
           GoRoute(
             path: 'reports',
