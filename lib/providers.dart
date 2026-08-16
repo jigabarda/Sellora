@@ -4,6 +4,8 @@ import 'package:sqflite/sqflite.dart';
 import 'core/dates.dart';
 import 'data/auth/auth_controller.dart';
 import 'data/backup/backup_service.dart';
+import 'data/insights/insight.dart';
+import 'data/insights/insights_service.dart';
 import 'data/models/entities.dart';
 import 'data/repositories/business_repository.dart';
 import 'data/repositories/category_repository.dart';
@@ -51,6 +53,10 @@ final expenseRepositoryProvider = Provider<ExpenseRepository>(
 
 final refundRepositoryProvider = Provider<RefundRepository>(
   (ref) => RefundRepository(ref.watch(databaseProvider)),
+);
+
+final insightsServiceProvider = Provider<InsightsService>(
+  (ref) => InsightsService(ref.watch(databaseProvider)),
 );
 
 final backupServiceProvider = Provider<BackupService>(
@@ -195,4 +201,14 @@ final reportSummaryProvider = FutureProvider.autoDispose
     transactions: tx,
     topProducts: top,
   );
+});
+
+/// Derived observations for the business, worst-first.
+///
+/// `autoDispose` like the rest: the rules read a lot of history, and holding
+/// the result after the user leaves the screen would serve them a stale set
+/// after they record the very sale that resolves one.
+final insightsProvider = FutureProvider.autoDispose
+    .family<List<Insight>, String>((ref, businessId) async {
+  return ref.watch(insightsServiceProvider).generate(businessId);
 });
