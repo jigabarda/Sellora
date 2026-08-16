@@ -1,6 +1,10 @@
 # Smart Insights — design draft
 
-Status: **not started.** This is a specification, not a record of work done.
+Status: **built.** Implemented in `lib/data/insights/`; this remains the record
+of why it is shaped this way. Two things changed in the building: rules return
+`List<Insight>` rather than `Insight?`, because stock, dead stock, refunds and
+customers are naturally per-record; and dead stock uses 45 days rather than the
+60 sketched below, since these businesses turn over daily.
 
 The goal is an assistant that answers "what should I do about my business today?"
 without a language model. Every insight is arithmetic over tables the app already

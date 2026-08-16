@@ -7,6 +7,7 @@ import '../../core/money.dart';
 import '../../core/sellora_ui.dart';
 import '../../data/models/entities.dart';
 import '../../providers.dart';
+import '../insights/insights_screen.dart';
 
 class DashboardScreen extends ConsumerWidget {
   const DashboardScreen({super.key, required this.businessId});
@@ -23,6 +24,7 @@ class DashboardScreen extends ConsumerWidget {
         ref.invalidate(businessProvider(businessId));
         ref.invalidate(dashboardStatsProvider(businessId));
         ref.invalidate(salesProvider(businessId));
+        ref.invalidate(insightsProvider(businessId));
         await ref.read(dashboardStatsProvider(businessId).future);
       },
       child: ListView(
@@ -40,6 +42,7 @@ class DashboardScreen extends ConsumerWidget {
             data: (s) => _StatsGrid(stats: s, businessId: businessId),
           ),
           Gap.h16,
+          _InsightsCard(businessId: businessId),
           sales.when(
             loading: () => const SizedBox.shrink(),
             error: (_, __) => const SizedBox.shrink(),
@@ -171,6 +174,47 @@ class _StatsGrid extends StatelessWidget {
             ),
           ],
         ),
+      ],
+    );
+  }
+}
+
+/// The two most urgent insights, inline on the dashboard.
+///
+/// Deliberately not behind a tab: a warning the owner has to go looking for is
+/// one they will find after it mattered. Renders nothing at all when there is
+/// nothing to say — an empty "Insights" heading would be worse than absence.
+class _InsightsCard extends ConsumerWidget {
+  const _InsightsCard({required this.businessId});
+
+  final String businessId;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final insights =
+        ref.watch(insightsProvider(businessId)).valueOrNull ?? const [];
+    if (insights.isEmpty) return const SizedBox.shrink();
+
+    final top = insights.take(2).toList();
+    final remaining = insights.length - top.length;
+
+    return Column(
+      children: [
+        for (final insight in top) ...[
+          InsightCard(insight: insight),
+          Gap.h8,
+        ],
+        if (remaining > 0)
+          Align(
+            alignment: Alignment.centerLeft,
+            child: TextButton(
+              onPressed: () => context.push('/business/$businessId/insights'),
+              child: Text(
+                '$remaining more insight${remaining == 1 ? '' : 's'}',
+              ),
+            ),
+          ),
+        Gap.h8,
       ],
     );
   }

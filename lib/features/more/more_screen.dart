@@ -33,6 +33,12 @@ class MoreScreen extends StatelessWidget {
       ]),
       _MoreGroup('Money', [
         _MoreItem(
+            'Insights',
+            Icons.lightbulb_outline,
+            '/business/$businessId/insights',
+            'What needs attention right now',
+            _MoreTone.money),
+        _MoreItem(
             'Expenses',
             Icons.receipt_long_outlined,
             '/business/$businessId/expenses',

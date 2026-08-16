@@ -637,11 +637,12 @@ A feature is done when:
 - It has been formatted and analyzed.
 - Any intentional deviation from the web app is documented.
 
-## Smart Insights (designed, not built)
+## Smart Insights
 
-`docs/INSIGHTS_DESIGN.md` specifies an offline "what should I do today?" feature
-built from arithmetic rather than a language model — stock run-out forecasts,
-profit attribution, day-of-week patterns, dead stock, refund concentration.
+Built. `lib/data/insights/` holds the rules, `docs/INSIGHTS_DESIGN.md` the
+reasoning. An offline "what should I do today?" feature from arithmetic rather
+than a language model — stock run-out forecasts, profit attribution,
+day-of-week patterns, dead stock, refund concentration, quiet customers.
 
 Two things in that document are the point of it, and are easy to lose:
 
@@ -652,9 +653,23 @@ Two things in that document are the point of it, and are easy to lose:
 - **Every insight states its numbers.** Not "you're losing money" but "₱18,350 in
   expenses against ₱605 in sales over 7 days."
 
-It needs no schema change, so it can land before, between, or after the feature
-work below. The same document records why an on-device or cloud LLM was rejected
-for now, so that decision does not get relitigated from scratch.
+Two implementation choices worth knowing before changing a rule:
+
+- **Burn rate divides by how long the product has existed within the window**,
+  not by the window and not by the days it happened to sell. A product added
+  four days ago has four days of history; the window would report a quarter of
+  the true rate and the sale-days a triple.
+- **Refund concentration counts only single-line sales.** A refund names a
+  sale, not an item, so on a multi-item sale there is no honest way to say what
+  came back — guessing puts a quality complaint against the wrong product.
+
+`test/tools/dump_insights.dart` prints the sentences the seeded database
+produces, which is the fastest way to check phrasing without installing to a
+device. Run `seed_device_db.dart` first.
+
+It needed no schema change. The design document also records why an on-device or
+cloud LLM was rejected for now, so that decision does not get relitigated from
+scratch.
 
 ## Immediate Next Best Work
 
