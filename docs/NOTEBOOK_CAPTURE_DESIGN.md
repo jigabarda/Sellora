@@ -2,9 +2,11 @@
 
 Photograph a page of the paper notebook, check what was read, record it.
 
-**Status: built.** Branch `feat/notebook-capture`, cut from `main` at `cdcb367`.
-`flutter analyze` clean, 177 tests passing. Not yet validated against real
-handwriting — see [the open question](#the-open-question).
+**Status: built and verified on a device.** Branch `feat/notebook-capture`, cut
+from `main` at `cdcb367`. `flutter analyze` clean, 177 tests passing, full
+pick → read → preview → record path exercised on the emulator. Not yet
+validated against real handwriting — see
+[the open question](#the-open-question).
 
 ---
 
@@ -291,13 +293,38 @@ word that identifies an ice sale.
   override proved necessary; the recogniser is constructed lazily and the
   screen's initial state does no recognition.
 
+### Verified on a device
+
+Run on the `Sellora` AVD (Android 16, 1080×2400) against the seeded database,
+using a rendered ledger page pushed to the gallery. Not real handwriting — see
+[the open question](#the-open-question) — but it exercises the whole path.
+
+- **The picker opens with no permission prompt.** Logcat shows
+  `START ... act=android.intent.action.GET_CONTENT typ=image/*` from
+  `com.sellora.mobile`, and the system photo picker states "Sellora will only
+  have access to the photos you select". Scoped per-image access; nothing was
+  granted.
+- **Recognition and reconciliation work end to end.** A six-line page produced
+  *"4 of 6 lines added up"*: the date header and the running total marked
+  *Skipped*, four sales green with their customers attached.
+- **Reading never writes — confirmed, not assumed.** After the image was
+  selected, seven consecutive screenshots at 1.5 s intervals were byte-for-byte
+  identical: the preview sits waiting and touches nothing. Only on tapping
+  *Record 4 sales* did the database go from 77 to 81 sales, one row per line,
+  totalling ₱290 — exactly what the preview showed.
+- **A genuine OCR miss behaved as designed.** `Mang Tonyo` was read as
+  *"Wang Tonyo"*, so no customer matched — but the product and the arithmetic
+  still reconciled, so the line recorded correctly with no customer instead of
+  being lost. That is precisely the degradation the checksum is meant to buy.
+
+`test/tools/inspect_device_db.dart` prints recent sales out of a database
+pulled off the device, which is how the last point was checked rather than
+trusted.
+
 ## What is left
 
-1. **Emulator verification with a real photo.** Everything so far is unit-level
-   plus a build-only smoke test; the camera path, the ML Kit call and the
-   record loop have not run on a device.
-2. **Answer [the open question](#the-open-question)** — the only thing that
-   decides whether this ships.
+**Answer [the open question](#the-open-question)** — the only thing that decides
+whether this ships.
 
 ## The open question
 

@@ -434,13 +434,17 @@ class _LineTile extends StatelessWidget {
                       ),
                   ],
                 ),
-                const SizedBox(height: 2),
-                // The page's own words, always. The owner is holding the
-                // notebook; they need something to compare against.
-                Text(
-                  line.raw.trim(),
-                  style: context.text.bodySmall?.copyWith(color: t.muted),
-                ),
+                // The page's own words, so the owner can check the tile
+                // against the notebook in their other hand. Skipped when no
+                // product was identified, because the heading above is then
+                // already the raw text and printing it twice reads as a bug.
+                if (line.product != null) ...[
+                  const SizedBox(height: 2),
+                  Text(
+                    line.raw.trim(),
+                    style: context.text.bodySmall?.copyWith(color: t.muted),
+                  ),
+                ],
                 if (line.customer != null) ...[
                   const SizedBox(height: 2),
                   Text(line.customer!.name, style: context.text.bodySmall),
