@@ -30,6 +30,8 @@ class DashboardScreen extends ConsumerWidget {
       child: ListView(
         padding: const EdgeInsets.fromLTRB(Gap.lg, Gap.md, Gap.lg, 40),
         children: [
+          _QuickEntryBar(businessId: businessId),
+          Gap.h12,
           stats.when(
             loading: () => const Padding(
               padding: EdgeInsets.symmetric(vertical: 40),
@@ -54,6 +56,40 @@ class DashboardScreen extends ConsumerWidget {
                 Gap.h12,
                 _QuickActionsCard(businessId: businessId),
               ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Opens Quick Entry. Deliberately shaped like a search field rather than a
+/// button: it invites typing, and typing is the fast path this exists to offer.
+class _QuickEntryBar extends StatelessWidget {
+  const _QuickEntryBar({required this.businessId});
+
+  final String businessId;
+
+  @override
+  Widget build(BuildContext context) {
+    final t = context.t;
+
+    return SelloraCard(
+      padding: const EdgeInsets.symmetric(
+        horizontal: Gap.md,
+        vertical: Gap.md,
+      ),
+      color: t.surfaceAlt,
+      onTap: () => context.push('/business/$businessId/quick'),
+      child: Row(
+        children: [
+          Icon(Icons.bolt_outlined, size: 20, color: t.accent),
+          Gap.w12,
+          Expanded(
+            child: Text(
+              'Log a sale or expense…',
+              style: context.text.bodyMedium,
             ),
           ),
         ],

@@ -6,12 +6,17 @@ import 'package:go_router/go_router.dart';
 import '../../core/money.dart';
 import '../../core/sellora_ui.dart';
 import '../../data/models/entities.dart';
+import '../../data/quick_entry/quick_command.dart';
 import '../../providers.dart';
 
 class NewSaleScreen extends ConsumerStatefulWidget {
-  const NewSaleScreen({super.key, required this.businessId});
+  const NewSaleScreen({super.key, required this.businessId, this.prefill});
 
   final String businessId;
+
+  /// Seeded by Quick Entry. Lands in the cart exactly as a tapped product
+  /// would, so there is no second path into `recordSale`.
+  final RecordSaleCommand? prefill;
 
   @override
   ConsumerState<NewSaleScreen> createState() => _NewSaleScreenState();
@@ -33,6 +38,21 @@ class _NewSaleScreenState extends ConsumerState<NewSaleScreen> {
   final List<_CartLine> _cart = [];
   String? _customerId;
   bool _saving = false;
+
+  @override
+  void initState() {
+    super.initState();
+    final prefill = widget.prefill;
+    if (prefill == null) return;
+    // Clamped for the same reason the picker clamps: a tracked product cannot
+    // be sold beyond what is on the shelf, and a parsed quantity is a guess.
+    final max = prefill.product.trackStock ? prefill.product.stock : null;
+    final qty = max == null ? prefill.quantity : prefill.quantity.clamp(1, max);
+    if (max == null || max > 0) {
+      _cart.add(_CartLine(product: prefill.product, qty: qty));
+    }
+    _customerId = prefill.customer?.id;
+  }
 
   double get _total => _cart.fold(0.0, (sum, l) => sum + l.subtotal);
   int get _itemCount => _cart.fold(0, (sum, l) => sum + l.qty);
