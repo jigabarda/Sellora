@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import 'data/auth/auth_controller.dart';
+import 'data/quick_entry/quick_command.dart';
 import 'core/sellora_ui.dart';
 import 'features/auth/landing_screen.dart';
 import 'features/auth/login_screen.dart';
@@ -16,6 +17,7 @@ import 'features/dashboard/dashboard_screen.dart';
 import 'features/expenses/expenses_screen.dart';
 import 'features/home/home_screen.dart';
 import 'features/inventory/inventory_screen.dart';
+import 'features/quick_entry/quick_entry_screen.dart';
 import 'features/more/more_screen.dart';
 import 'features/products/product_form_screen.dart';
 import 'features/products/products_screen.dart';
@@ -183,7 +185,12 @@ final goRouterProvider = Provider<GoRouter>((ref) {
                         name: 'business_sale_new',
                         builder: (context, state) {
                           final id = state.pathParameters['businessId']!;
-                          return NewSaleScreen(businessId: id);
+                          final prefill = state.extra;
+                          return NewSaleScreen(
+                            businessId: id,
+                            prefill:
+                                prefill is RecordSaleCommand ? prefill : null,
+                          );
                         },
                       ),
                     ],
@@ -267,7 +274,11 @@ final goRouterProvider = Provider<GoRouter>((ref) {
                 name: 'business_expense_new',
                 builder: (context, state) {
                   final id = state.pathParameters['businessId']!;
-                  return ExpenseFormScreen(businessId: id);
+                  final prefill = state.extra;
+                  return ExpenseFormScreen(
+                    businessId: id,
+                    prefill: prefill is AddExpenseCommand ? prefill : null,
+                  );
                 },
               ),
               GoRoute(
@@ -301,6 +312,15 @@ final goRouterProvider = Provider<GoRouter>((ref) {
                 },
               ),
             ],
+          ),
+          GoRoute(
+            path: 'quick',
+            parentNavigatorKey: rootNavigatorKey,
+            name: 'business_quick_entry',
+            builder: (context, state) {
+              final id = state.pathParameters['businessId']!;
+              return QuickEntryScreen(businessId: id);
+            },
           ),
           GoRoute(
             path: 'reports',

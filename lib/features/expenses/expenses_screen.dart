@@ -7,6 +7,7 @@ import '../../core/dates.dart';
 import '../../core/money.dart';
 import '../../core/sellora_ui.dart';
 import '../../data/models/entities.dart';
+import '../../data/quick_entry/quick_command.dart';
 import '../../providers.dart';
 import '../../util/ids.dart';
 
@@ -216,10 +217,16 @@ class ExpenseFormScreen extends ConsumerStatefulWidget {
     super.key,
     required this.businessId,
     this.expenseId,
+    this.prefill,
   });
 
   final String businessId;
   final String? expenseId;
+
+  /// Seeded by Quick Entry. The form is the confirmation step — nothing is
+  /// written until the user taps save here, so a wrong parse costs an edit
+  /// rather than a bad row.
+  final AddExpenseCommand? prefill;
 
   @override
   ConsumerState<ExpenseFormScreen> createState() => _ExpenseFormScreenState();
@@ -241,6 +248,14 @@ class _ExpenseFormScreenState extends ConsumerState<ExpenseFormScreen> {
   @override
   void initState() {
     super.initState();
+    final prefill = widget.prefill;
+    if (prefill != null && !_isEdit) {
+      _amount.text = prefill.amount.toStringAsFixed(2);
+      _note.text = prefill.note;
+      if (_expenseCategories.contains(prefill.category)) {
+        _category = prefill.category;
+      }
+    }
     if (_isEdit) {
       _loading = true;
       WidgetsBinding.instance.addPostFrameCallback((_) async {
