@@ -63,6 +63,10 @@ void main() {
     final userId = auth.state.userId!;
 
     const bizId = 'biz_seed';
+    final now = DateTime.now();
+    int at(int daysAgo) =>
+        now.subtract(Duration(days: daysAgo)).millisecondsSinceEpoch;
+
     await db.insert('businesses', {
       'id': bizId,
       'user_id': userId,
@@ -70,12 +74,11 @@ void main() {
       'type': 'Water Station',
       'address': '12 Mabini St, Cavite',
       'phone': '0917-555-0101',
-      'created_at': DateTime.now().millisecondsSinceEpoch,
+      // Backdated past the eight weeks of trading below. A business created
+      // today with two months of sales against it is incoherent, and it also
+      // suppresses the profit rule, whose gate requires a full week of history.
+      'created_at': at(120),
     });
-
-    final now = DateTime.now();
-    int at(int daysAgo) =>
-        now.subtract(Duration(days: daysAgo)).millisecondsSinceEpoch;
 
     const categories = [
       ('cat_water', 'Water'),
@@ -133,6 +136,7 @@ void main() {
       ('prd_6', 'cat_svc', 'Home Delivery', 'SVC-D', 50.0, 0, 'trip', 0, 1),
       ('prd_7', 'cat_svc', 'Container Cleaning', 'SVC-C', 80.0, 0, 'pcs', 0, 1),
       ('prd_8', null, 'Old Blue Container', 'C-OLD', 250.0, 0, 'pcs', 1, 0),
+      ('prd_9', null, 'Blue Drum 20L', 'D-20', 320.0, 4, 'pcs', 1, 1),
     ];
     for (final p in products) {
       await db.insert('products', {
@@ -158,6 +162,7 @@ void main() {
       ('cus_4', 'Carinderia Malaya', '0921-777-8888', ''),
       ('cus_5', 'Jollibee Branch 12', '0922-999-0000', 'b12@example.com'),
       ('cus_6', 'Roberto Santos', '0915-222-3333', ''),
+      ('cus_7', 'Tindahan ni Mareng Rosa', '0919-444-5555', ''),
     ];
     for (final c in customers) {
       await db.insert('customers', {
@@ -209,6 +214,102 @@ void main() {
         'note': '',
         'at': at(s.$3),
       });
+    }
+
+    // Eight weeks of trading, shaped so the insight rules have real
+    // distributions to find rather than a handful of hand-placed rows. Without
+    // this every rule correctly stays silent, which makes the feature
+    // impossible to review on a device.
+    //
+    // Tuesdays are deliberately dead and Saturdays busy, so the day-of-week
+    // rule has a genuine gap to detect.
+    var seq = 0;
+    Future<void> record(
+      String productId,
+      int qty,
+      double unitPrice,
+      DateTime on, {
+      String? customerId,
+      bool refunded = false,
+    }) async {
+      seq++;
+      final id = 'sal_h$seq';
+      final stamp = on.millisecondsSinceEpoch;
+      await db.insert('sales', {
+        'id': id,
+        'business_id': bizId,
+        'customer_id': customerId,
+        'total': qty * unitPrice,
+        'created_at': stamp,
+      });
+      await db.insert('sale_lines', {
+        'id': 'ln_$id',
+        'sale_id': id,
+        'product_id': productId,
+        'name': products.firstWhere((p) => p.$1 == productId).$3,
+        'qty': qty,
+        'unit_price': unitPrice,
+      });
+      await db.insert('stock_ledger', {
+        'id': 'stk_$id',
+        'business_id': bizId,
+        'product_id': productId,
+        'delta': -qty,
+        'reason': 'sale',
+        'ref_id': id,
+        'note': '',
+        'at': stamp,
+      });
+      if (refunded) {
+        await db.insert('refunds', {
+          'id': 'ref_$id',
+          'business_id': bizId,
+          'sale_id': id,
+          'amount': qty * unitPrice,
+          'note': 'Melted on arrival',
+          'restock': 0,
+          'at': stamp,
+        });
+      }
+    }
+
+    for (var daysAgo = 56; daysAgo >= 0; daysAgo--) {
+      final day = now.subtract(Duration(days: daysAgo));
+      if (day.weekday == DateTime.tuesday) continue;
+      final at12 = DateTime(day.year, day.month, day.day, 12);
+      final busy = day.weekday == DateTime.saturday;
+      await record('prd_1', busy ? 6 : 2, 25.0, at12);
+      if (busy) await record('prd_3', 2, 45.0, at12);
+    }
+
+    // Two products heading for zero at different speeds, so both severity
+    // levels of the run-out rule appear.
+    for (final daysAgo in [1, 3, 5]) {
+      final day = _skipTuesday(now.subtract(Duration(days: daysAgo)));
+      await record('prd_2', 3, 30.0, DateTime(day.year, day.month, day.day, 9));
+      await record(
+          'prd_4', 5, 60.0, DateTime(day.year, day.month, day.day, 15));
+    }
+
+    // Enough Crushed Ice sales to clear the refund gate, two of them returned.
+    for (final daysAgo in [8, 10, 12]) {
+      final day = _skipTuesday(now.subtract(Duration(days: daysAgo)));
+      await record(
+        'prd_4',
+        1,
+        60.0,
+        DateTime(day.year, day.month, day.day, 11),
+        refunded: daysAgo != 12,
+      );
+    }
+
+    // A weekly regular who then stopped, for the quiet-customer rule. Uses its
+    // own customer because every other seeded customer has a sale from this
+    // week, which would correctly disqualify them.
+    for (final daysAgo in [60, 53, 46, 39]) {
+      final day = _skipTuesday(now.subtract(Duration(days: daysAgo)));
+      await record('prd_1', 2, 25.0, DateTime(day.year, day.month, day.day, 10),
+          customerId: 'cus_7');
     }
 
     const expenses = [
@@ -267,3 +368,9 @@ void main() {
     print('Seeded database written to $path');
   });
 }
+
+/// Nudges a date off Tuesday, which the eight-week loop above leaves empty on
+/// purpose so the day-of-week rule has an unambiguous slowest day.
+DateTime _skipTuesday(DateTime day) => day.weekday == DateTime.tuesday
+    ? day.subtract(const Duration(days: 1))
+    : day;
