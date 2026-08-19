@@ -39,6 +39,8 @@ List<({String name, String path})> routesFor(String bizId) => [
       (name: 'new refund', path: '/business/$bizId/refunds/new'),
       (name: 'quick entry', path: '/business/$bizId/quick'),
       (name: 'scan a page', path: '/business/$bizId/scan'),
+      // Debug-only, and tests run in debug, so it is reachable here.
+      (name: 'recogniser report', path: '/business/$bizId/scan/diagnose'),
       (name: 'insights', path: '/business/$bizId/insights'),
       (name: 'reports', path: '/business/$bizId/reports'),
       (name: 'settings', path: '/business/$bizId/settings'),

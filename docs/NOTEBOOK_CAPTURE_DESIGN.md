@@ -335,6 +335,33 @@ trusted.
 **Answer [the open question](#the-open-question)** — the only thing that decides
 whether this ships.
 
+## Measuring it: the recogniser report
+
+`lib/features/notebook_capture/ocr_report_screen.dart`, reached from the Scan
+screen behind `kDebugMode`. Pick any number of photographs; it shows, per page,
+exactly what ML Kit returned and what the parser made of it, and scores the
+pages. Nothing is recorded. "Copy the whole report" puts it on the clipboard as
+plain text so results can leave the phone as something readable.
+
+It reads the **real** catalogue out of the database, so the rate means
+something — a page scored against the wrong price list reads as a recogniser
+failure when it is nothing of the kind.
+
+It lives in the app rather than in an integration test because everything else
+was tried and was worse:
+
+- `flutter test integration_test/` **uninstalls the app after every run**, which
+  wipes its private storage. Photographs pushed there do not survive to the next
+  run, and neither would a granted permission.
+- Shared storage (`/sdcard/notebook`) is invisible to an app holding no media
+  permission. The directory listing succeeds and returns nothing. Sellora holds
+  no media permission and must not start holding one for a diagnostic.
+
+The photo picker sidesteps both: the owner grants access to the images they
+choose and nothing else, which is the same mechanism the capture screen already
+uses. It also works on a real phone with no cable, which is where the real pages
+are.
+
 ## The open question
 
 Everything above is architecture, and architecture cannot answer the only

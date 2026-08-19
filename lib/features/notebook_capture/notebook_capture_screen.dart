@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:go_router/go_router.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:image_picker/image_picker.dart';
 
@@ -8,6 +9,7 @@ import '../../data/models/entities.dart';
 import '../../data/notebook/notebook_line.dart';
 import '../../data/notebook/notebook_parser.dart';
 import '../../providers.dart';
+import 'ocr_report_screen.dart';
 
 /// Photograph a page of the notebook; check what was read; record it.
 ///
@@ -49,7 +51,13 @@ class _NotebookCaptureScreenState extends ConsumerState<NotebookCaptureScreen> {
       body: _busy
           ? const LoadingView()
           : _lines == null
-              ? _Intro(onPick: (source) => _pick(source, products, customers))
+              ? _Intro(
+                  onPick: (source) => _pick(source, products, customers),
+                  onDiagnose: ocrReportEnabled
+                      ? () => context
+                          .push('/business/${widget.businessId}/scan/diagnose')
+                      : null,
+                )
               : _Preview(
                   lines: _lines!,
                   selected: _selected,
@@ -235,9 +243,14 @@ class _NotebookCaptureScreenState extends ConsumerState<NotebookCaptureScreen> {
 }
 
 class _Intro extends StatelessWidget {
-  const _Intro({required this.onPick});
+  const _Intro({required this.onPick, this.onDiagnose});
 
   final void Function(ImageSource) onPick;
+
+  /// Non-null in debug builds only: opens the recogniser report, which reads
+  /// pages without recording anything and scores how much of each one the
+  /// arithmetic could confirm.
+  final VoidCallback? onDiagnose;
 
   @override
   Widget build(BuildContext context) {
@@ -266,6 +279,14 @@ class _Intro extends StatelessWidget {
         ),
         Gap.h24,
         const _Tips(),
+        if (onDiagnose != null) ...[
+          Gap.h24,
+          TextButton.icon(
+            onPressed: onDiagnose,
+            icon: const Icon(Icons.science_outlined, size: 18),
+            label: const Text('Recogniser report (debug)'),
+          ),
+        ],
       ],
     );
   }
