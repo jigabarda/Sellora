@@ -13,6 +13,7 @@ List<({String name, String path})> routesFor(String bizId) => [
       (name: 'backup', path: '/backup'),
       // Signed-in, though only ever reached straight off a restore.
       (name: 'new password', path: '/new-password'),
+      (name: 'recovery code', path: '/recovery-code'),
       (name: 'dashboard', path: '/business/$bizId/dashboard'),
       (name: 'products', path: '/business/$bizId/products'),
       (name: 'new product', path: '/business/$bizId/products/new'),
@@ -95,7 +96,13 @@ void main() {
 
       // `/restore` belongs in this list, not the signed-in one: it is the only
       // way back for someone whose phone is gone and who has no account yet.
-      for (final path in ['/welcome', '/login', '/register', '/restore']) {
+      for (final path in [
+        '/welcome',
+        '/login',
+        '/register',
+        '/restore',
+        '/forgot-password',
+      ]) {
         await openRoute(tester, harness, path);
       }
     });

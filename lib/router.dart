@@ -9,7 +9,9 @@ import 'features/auth/landing_screen.dart';
 import 'features/auth/login_screen.dart';
 import 'features/auth/register_screen.dart';
 import 'features/backup/backup_screen.dart';
+import 'features/auth/forgot_password_screen.dart';
 import 'features/auth/new_password_screen.dart';
+import 'features/auth/recovery_code_screen.dart';
 import 'features/backup/restore_screen.dart';
 import 'features/business/new_business_screen.dart';
 import 'features/categories/categories_screen.dart';
@@ -80,7 +82,8 @@ final goRouterProvider = Provider<GoRouter>((ref) {
       final authRoute = loc == '/welcome' ||
           loc == '/login' ||
           loc == '/register' ||
-          loc == '/restore';
+          loc == '/restore' ||
+          loc == '/forgot-password';
       if (!loggedIn && !authRoute) return '/welcome';
       if (loggedIn && authRoute) return '/';
       return null;
@@ -105,6 +108,19 @@ final goRouterProvider = Provider<GoRouter>((ref) {
         path: '/restore',
         name: 'restore',
         builder: (context, state) => const RestoreScreen(),
+      ),
+      // Signed out by necessity: somebody who cannot get in is the only person
+      // who needs it.
+      GoRoute(
+        path: '/forgot-password',
+        name: 'forgot_password',
+        builder: (context, state) => const ForgotPasswordScreen(),
+      ),
+      GoRoute(
+        path: '/recovery-code',
+        name: 'recovery_code',
+        builder: (context, state) =>
+            RecoveryCodeScreen(code: state.extra as String? ?? ''),
       ),
       // Signed-in, and deliberately not in any menu: the only way here is
       // straight off a restore, which is the moment ownership was proved.

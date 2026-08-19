@@ -14,7 +14,7 @@ class SelloraDatabase {
   /// private copy of the number is exactly how the two drifted apart before:
   /// a comment asked whoever bumped one to bump the other, and eventually
   /// nobody did.
-  static const schemaVersion = 8;
+  static const schemaVersion = 9;
 
   static Future<Database> open() async {
     final dir = await getApplicationDocumentsDirectory();
@@ -109,6 +109,12 @@ class SelloraDatabase {
     // sale was recorded", which is what every existing rental meant.
     if (oldVersion < 8) {
       await _addColumn(db, 'sale_lines', 'starts_at', 'INTEGER');
+    }
+    // Recovery codes. Nullable because an account without one is the normal
+    // state until someone makes one, and every existing account is in it.
+    if (oldVersion < 9) {
+      await _addColumn(db, 'users', 'recovery_salt', 'TEXT');
+      await _addColumn(db, 'users', 'recovery_hash', 'TEXT');
     }
   }
 
@@ -226,6 +232,11 @@ CREATE TABLE IF NOT EXISTS $table (
   name TEXT NOT NULL,
   salt TEXT NOT NULL,
   password_hash TEXT NOT NULL,
+  -- A recovery code, hashed like the password and salted separately so the two
+  -- secrets share nothing. Null until the owner makes one, which is the normal
+  -- state and the state every account predating them is in.
+  recovery_salt TEXT,
+  recovery_hash TEXT,
   created_at INTEGER NOT NULL
 );
 ''');

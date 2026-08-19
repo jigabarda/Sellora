@@ -150,6 +150,207 @@ void main() {
     });
   });
 
+  group('recovery codes', () {
+    test('a code resets the password without touching anything else', () async {
+      // The case the whole feature exists for: no backup file, no memory of
+      // the password, and a code written on the back of a receipt.
+      final code = await auth.createRecoveryCode(password: 'secret123');
+      await auth.logout();
+
+      await auth.resetPasswordWithRecoveryCode(
+        username: 'owner',
+        code: code,
+        newPassword: 'brandnew456',
+      );
+
+      await auth.login(username: 'owner', password: 'brandnew456');
+      expect(auth.isLoggedIn, isTrue);
+    });
+
+    test('the code is accepted however it was written down', () async {
+      // Shown as ABCD-EFGH-JKMN and typed back months later as
+      // "abcdefghjkmn", or with stray spaces. Hashing the dashed form would
+      // have made every real attempt fail.
+      final code = await auth.createRecoveryCode(password: 'secret123');
+      final messy = ' ${code.replaceAll('-', '').toLowerCase()} ';
+
+      await auth.resetPasswordWithRecoveryCode(
+        username: 'owner',
+        code: messy,
+        newPassword: 'brandnew456',
+      );
+
+      await auth.logout();
+      await auth.login(username: 'owner', password: 'brandnew456');
+      expect(auth.isLoggedIn, isTrue);
+    });
+
+    test('the records are untouched by a reset', () async {
+      // Stated as a test because it is the promise being made: forgetting a
+      // password must never cost anybody their sales.
+      await db.insert('businesses', {
+        'id': 'biz_1',
+        'user_id': auth.state.userId,
+        'name': 'Sari-sari',
+        'type': 'Retail Store',
+        'address': '',
+        'phone': '',
+        'created_at': 1,
+      });
+
+      final code = await auth.createRecoveryCode(password: 'secret123');
+      await auth.resetPasswordWithRecoveryCode(
+        username: 'owner',
+        code: code,
+        newPassword: 'brandnew456',
+      );
+
+      expect(await db.query('businesses'), hasLength(1));
+    });
+
+    test('a spent code cannot be used twice', () async {
+      // Otherwise a slip of paper becomes a permanent second key: anyone who
+      // ever glimpsed it could take the account back at any time.
+      final code = await auth.createRecoveryCode(password: 'secret123');
+      await auth.resetPasswordWithRecoveryCode(
+        username: 'owner',
+        code: code,
+        newPassword: 'brandnew456',
+      );
+
+      await expectLater(
+        auth.resetPasswordWithRecoveryCode(
+          username: 'owner',
+          code: code,
+          newPassword: 'thirdpassword',
+        ),
+        throwsA(isA<AuthException>()),
+      );
+      // And the password from the successful reset still stands.
+      await auth.logout();
+      await auth.login(username: 'owner', password: 'brandnew456');
+      expect(auth.isLoggedIn, isTrue);
+    });
+
+    test('a reset hands back a replacement code that works', () async {
+      // Spending the only code must not leave the owner with no way back the
+      // next time, so the reset issues its successor.
+      final first = await auth.createRecoveryCode(password: 'secret123');
+      final second = await auth.resetPasswordWithRecoveryCode(
+        username: 'owner',
+        code: first,
+        newPassword: 'brandnew456',
+      );
+
+      expect(second, isNot(first));
+      await auth.resetPasswordWithRecoveryCode(
+        username: 'owner',
+        code: second,
+        newPassword: 'thirdpass789',
+      );
+      await auth.logout();
+      await auth.login(username: 'owner', password: 'thirdpass789');
+      expect(auth.isLoggedIn, isTrue);
+    });
+
+    test('a wrong code changes nothing', () async {
+      await auth.createRecoveryCode(password: 'secret123');
+
+      await expectLater(
+        auth.resetPasswordWithRecoveryCode(
+          username: 'owner',
+          code: 'ZZZZ-ZZZZ-ZZZZ',
+          newPassword: 'brandnew456',
+        ),
+        throwsA(isA<AuthException>()),
+      );
+      await auth.logout();
+      await auth.login(username: 'owner', password: 'secret123');
+      expect(auth.isLoggedIn, isTrue);
+    });
+
+    test('an account with no code says so rather than failing vaguely',
+        () async {
+      // Every account predating this feature is in exactly this state, so the
+      // message has to point somewhere useful.
+      await expectLater(
+        auth.resetPasswordWithRecoveryCode(
+          username: 'owner',
+          code: 'ZZZZ-ZZZZ-ZZZZ',
+          newPassword: 'brandnew456',
+        ),
+        throwsA(isA<AuthException>().having(
+          (e) => e.message,
+          'message',
+          contains('no recovery code'),
+        )),
+      );
+    });
+
+    test('making a code needs the current password', () async {
+      // Otherwise anyone holding an unlocked phone could walk off with a key
+      // to it and lock the owner out later.
+      await expectLater(
+        auth.createRecoveryCode(password: 'wrongpassword'),
+        throwsA(isA<AuthException>()),
+      );
+      expect(await auth.hasRecoveryCode('owner'), isFalse);
+    });
+
+    test('making a new code retires the old one', () async {
+      final first = await auth.createRecoveryCode(password: 'secret123');
+      await auth.createRecoveryCode(password: 'secret123');
+
+      await expectLater(
+        auth.resetPasswordWithRecoveryCode(
+          username: 'owner',
+          code: first,
+          newPassword: 'brandnew456',
+        ),
+        throwsA(isA<AuthException>()),
+      );
+    });
+
+    test('hasRecoveryCode reports what the account actually has', () async {
+      expect(await auth.hasRecoveryCode('owner'), isFalse);
+      await auth.createRecoveryCode(password: 'secret123');
+      expect(await auth.hasRecoveryCode('  OWNER '), isTrue,
+          reason: 'the username is normalised like everywhere else');
+      expect(await auth.hasRecoveryCode('nobody'), isFalse);
+    });
+
+    test('the code is never readable back out of the database', () async {
+      final code = await auth.createRecoveryCode(password: 'secret123');
+      final row = (await db.query('users')).single;
+
+      // Only a hash is kept. If this ever fails, the code is being stored in
+      // the clear and anyone with the database file has the account.
+      expect(row.values.map((v) => '$v').join(' '),
+          isNot(contains(AuthController.normalizeRecoveryCode(code))));
+    });
+
+    test('a reset is refused for a password below the minimum', () async {
+      final code = await auth.createRecoveryCode(password: 'secret123');
+      await expectLater(
+        auth.resetPasswordWithRecoveryCode(
+          username: 'owner',
+          code: code,
+          newPassword: 'short',
+        ),
+        throwsA(isA<AuthException>()),
+      );
+      // The code is unspent, so a typo does not cost the one way back in.
+      await auth.resetPasswordWithRecoveryCode(
+        username: 'owner',
+        code: code,
+        newPassword: 'longenough1',
+      );
+      await auth.logout();
+      await auth.login(username: 'owner', password: 'longenough1');
+      expect(auth.isLoggedIn, isTrue);
+    });
+  });
+
   test('currentUser returns the signed-in account without credential fields',
       () async {
     final user = await auth.currentUser();

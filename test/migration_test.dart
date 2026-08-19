@@ -232,6 +232,36 @@ void main() {
     expect(await _columns(db, 'sale_lines'), contains('starts_at'));
   });
 
+  test('v4 -> v9 gives an existing account its recovery columns', () async {
+    // The recovery columns land on a `users` table that the v5 step rebuilt
+    // from scratch, so this checks the two steps compose rather than the
+    // later one quietly finding nothing to alter.
+    await db.execute(_v4Users);
+    await db.execute(_v4Businesses);
+    await db.insert('users', {
+      'id': 'usr_1',
+      'email': 'james@gmail.com',
+      'name': 'James',
+      'salt': 'salt',
+      'password_hash': 'hash',
+      'created_at': 1,
+    });
+
+    await SelloraDatabase.migrate(db, 4);
+
+    expect(
+      await _columns(db, 'users'),
+      containsAll(['username', 'recovery_salt', 'recovery_hash']),
+    );
+
+    // The account survives with no code, which is the correct starting state:
+    // nobody has been given one, so nobody can reset with one.
+    final user = (await db.query('users')).single;
+    expect(user['username'], 'james');
+    expect(user['recovery_salt'], isNull);
+    expect(user['recovery_hash'], isNull);
+  });
+
   test('v2 -> v5 adds the product columns without touching users again',
       () async {
     await db.execute(_v1Businesses);
