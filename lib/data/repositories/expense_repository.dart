@@ -20,6 +20,26 @@ class ExpenseRepository {
     return rows.map(Expense.fromMap).toList(growable: false);
   }
 
+  /// Every expense in the range, oldest first. Unbounded, for the same reason
+  /// [SaleRepository.listBetween] is: this backs an export, not a screen.
+  Future<List<Expense>> listBetween(
+    String businessId,
+    DateTime from,
+    DateTime toExclusive,
+  ) async {
+    final rows = await _db.query(
+      _table,
+      where: 'business_id = ? AND at >= ? AND at < ?',
+      whereArgs: [
+        businessId,
+        from.millisecondsSinceEpoch,
+        toExclusive.millisecondsSinceEpoch,
+      ],
+      orderBy: 'at ASC',
+    );
+    return rows.map(Expense.fromMap).toList(growable: false);
+  }
+
   Future<double> sumBetween(
       String businessId, DateTime from, DateTime toExclusive) async {
     final r = await _db.rawQuery(
