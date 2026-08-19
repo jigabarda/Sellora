@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
@@ -32,40 +34,47 @@ class SelloraWordmark extends StatelessWidget {
   }
 }
 
-/// The Sellora mark: a receipt, cut out of a gradient squircle.
+/// The Sellora mark: a sales slip, tipped slightly, on a lit tile.
 ///
-/// A letter in a box is what every app ships on day one, and it says nothing.
-/// A receipt says what this app is for — a record of what was sold — and the
-/// torn bottom edge gives it a silhouette you can pick out of a grid of round
-/// icons, which is most of what a small mark has to do.
+/// The idea it turns on is that the slip's ruled lines get **longer as they go
+/// down**. At a glance they are the lines of a receipt; a moment later they are
+/// a chart going up. Recorded sales becoming something you can read is what the
+/// app is for, so the mark says it in one shape rather than borrowing a stock
+/// bar-chart glyph.
 ///
-/// The ruled lines are **cut** from the shape rather than painted over it, so
-/// the gradient shows through them. Negative space is what keeps a mark this
-/// small from turning into a smudge, and it means the lines can never be the
-/// wrong colour against the tile.
+/// The rest is what separates a mark from a glyph dropped on a plate: the tile
+/// is lit from the top left rather than flat, the slip casts a real shadow onto
+/// it, the paper carries a faint gradient instead of being pure white, and the
+/// whole thing is tipped eight degrees. The tilt is doing more work than it
+/// looks — perfect symmetry is most of what makes a small mark read as
+/// generated rather than drawn.
 ///
-/// Both gradient stops are derived from the live accent, so a user who rebrands
-/// the app gets a mark in their own colour instead of a stale purple tile.
-/// `tool/generate_launcher_icon.py` draws the same geometry for the launcher
-/// icon, from the same fractions.
+/// The lines are **cut** from the slip, so the tile's gradient shows through
+/// them. Negative space keeps the mark from closing into a smudge at 48px, and
+/// the lines can never be the wrong colour against the paper.
+///
+/// Colours come off the live accent, so rebranding the app rebrands the mark.
+/// `tool/generate_launcher_icon.py` draws the same geometry from the same
+/// fractions for the launcher icon.
 class SelloraLogo extends StatelessWidget {
   const SelloraLogo({super.key, this.size = 40, this.shadow = true});
 
   final double size;
 
-  /// Off in dense places — an app bar row does not need the lift.
+  /// The tile's own drop shadow. Off in dense places — an app bar row does not
+  /// need the lift. The slip's shadow onto the tile is always drawn.
   final bool shadow;
 
   @override
   Widget build(BuildContext context) {
     final t = context.t;
     final base = HSLColor.fromColor(t.accent);
-    final top = base
-        .withLightness((base.lightness + 0.10).clamp(0.0, 1.0))
-        .withSaturation((base.saturation - 0.05).clamp(0.0, 1.0))
+    final lit = base
+        .withLightness((base.lightness + 0.13).clamp(0.0, 1.0))
+        .withSaturation((base.saturation - 0.04).clamp(0.0, 1.0))
         .toColor();
-    final bottom =
-        base.withLightness((base.lightness - 0.16).clamp(0.0, 1.0)).toColor();
+    final deep =
+        base.withLightness((base.lightness - 0.19).clamp(0.0, 1.0)).toColor();
 
     return Container(
       width: size,
@@ -78,7 +87,7 @@ class SelloraLogo extends StatelessWidget {
         gradient: LinearGradient(
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
-          colors: [top, bottom],
+          colors: [lit, deep],
         ),
         boxShadow: shadow
             ? [
@@ -90,44 +99,60 @@ class SelloraLogo extends StatelessWidget {
               ]
             : null,
       ),
-      child: CustomPaint(
-        painter: _ReceiptMarkPainter(t.onAccent),
-        size: Size.square(size),
+      child: DecoratedBox(
+        // The light. Without it the tile is a flat swatch and the whole mark
+        // reads as clip art on a colour.
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(size * 0.28),
+          gradient: RadialGradient(
+            center: const Alignment(-0.55, -0.75),
+            radius: 1.15,
+            colors: [
+              Colors.white.withValues(alpha: 0.26),
+              Colors.white.withValues(alpha: 0.0),
+            ],
+          ),
+        ),
+        child: CustomPaint(
+          painter: _SlipMarkPainter(onAccent: t.onAccent),
+          size: Size.square(size),
+        ),
       ),
     );
   }
 }
 
-/// The receipt, in fractions of the tile so every size draws the same shape.
-class _ReceiptMarkPainter extends CustomPainter {
-  const _ReceiptMarkPainter(this.color);
+/// The slip, in fractions of the tile so every size draws the same shape.
+class _SlipMarkPainter extends CustomPainter {
+  const _SlipMarkPainter({required this.onAccent});
 
-  final Color color;
+  final Color onAccent;
 
-  // Body of the receipt.
-  static const _left = 0.29;
-  static const _right = 0.71;
-  static const _top = 0.215;
-  static const _bodyBottom = 0.665;
+  static const _left = 0.31;
+  static const _right = 0.69;
+  static const _top = 0.19;
+  static const _bodyBottom = 0.655;
 
   /// How far the torn points hang below the body.
-  static const _tip = 0.755;
-  static const _corner = 0.055;
+  static const _tip = 0.745;
+  static const _corner = 0.05;
   static const _teeth = 4;
 
-  // Ruled lines, inset from the body edges.
-  static const _lineLeft = 0.365;
-  static const _lineRight = 0.635;
-  static const _shortRight = 0.545;
-  static const _lineHeight = 0.058;
-  static const _lineTops = [0.305, 0.415, 0.525];
+  /// The whole slip is tipped by this much, about the tile's centre.
+  static const _tiltDegrees = -8.0;
+
+  // Ruled lines: same left edge, growing right. This is the mark's one idea.
+  static const _lineLeft = 0.385;
+  static const _lineTops = [0.295, 0.405, 0.515];
+  static const _lineWidths = [0.110, 0.165, 0.230];
+  static const _lineHeight = 0.055;
 
   @override
   void paint(Canvas canvas, Size size) {
     final s = size.shortestSide;
     double x(double f) => f * s;
 
-    final body = Path()
+    final slip = Path()
       ..moveTo(x(_left), x(_top + _corner))
       ..quadraticBezierTo(x(_left), x(_top), x(_left + _corner), x(_top))
       ..lineTo(x(_right - _corner), x(_top))
@@ -137,37 +162,59 @@ class _ReceiptMarkPainter extends CustomPainter {
     // Torn edge, walked right to left so the path closes up the left side.
     const span = _right - _left;
     for (var i = 0; i < _teeth; i++) {
-      body
+      slip
         ..lineTo(x(_right - span * (i * 2 + 1) / (_teeth * 2)), x(_tip))
         ..lineTo(x(_right - span * (i * 2 + 2) / (_teeth * 2)), x(_bodyBottom));
     }
-    body.close();
+    slip.close();
 
     final lines = Path();
     for (var i = 0; i < _lineTops.length; i++) {
-      // The last line is short, the way the last line of a receipt is.
-      final right = i == _lineTops.length - 1 ? _shortRight : _lineRight;
       lines.addRRect(
         RRect.fromLTRBR(
           x(_lineLeft),
           x(_lineTops[i]),
-          x(right),
+          x(_lineLeft + _lineWidths[i]),
           x(_lineTops[i] + _lineHeight),
           Radius.circular(x(_lineHeight / 2)),
         ),
       );
     }
 
+    canvas.save();
+    canvas.translate(s / 2, s / 2);
+    canvas.rotate(_tiltDegrees * math.pi / 180);
+    canvas.translate(-s / 2, -s / 2);
+
+    // The slip's shadow onto the tile, from the silhouette rather than from the
+    // punched shape — light does not fall through the ruled lines.
     canvas.drawPath(
-      Path.combine(PathOperation.difference, body, lines),
+      slip.shift(Offset(0, s * 0.028)),
       Paint()
-        ..color = color
-        ..isAntiAlias = true,
+        ..color = const Color(0xFF1A1446).withValues(alpha: 0.34)
+        ..maskFilter = MaskFilter.blur(BlurStyle.normal, s * 0.045),
     );
+
+    // Paper, faintly tinted down the sheet. Pure white is the flattest thing a
+    // mark can be made of.
+    final bounds = Rect.fromLTRB(x(_left), x(_top), x(_right), x(_tip));
+    canvas.drawPath(
+      Path.combine(PathOperation.difference, slip, lines),
+      Paint()
+        ..isAntiAlias = true
+        ..shader = LinearGradient(
+          begin: Alignment.topCenter,
+          end: Alignment.bottomCenter,
+          colors: [onAccent, Color.alphaBlend(
+              const Color(0x1F4F46E5), onAccent)],
+        ).createShader(bounds),
+    );
+
+    canvas.restore();
   }
 
   @override
-  bool shouldRepaint(_ReceiptMarkPainter old) => old.color != color;
+  bool shouldRepaint(_SlipMarkPainter old) => old.onAccent != onAccent;
 }
 
 /// Mark and wordmark together, for headers and the logged-out screens.

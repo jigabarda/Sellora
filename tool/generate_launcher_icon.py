@@ -3,8 +3,8 @@
 The icon is not hand-drawn art: it is the `SelloraLogo` widget expressed as
 PNGs, so the tile on the home screen and the mark inside the app cannot drift
 apart. Both take the accent colour, the 28%-of-the-side squircle radius, and the
-receipt geometry — the fractions below are the same ones _ReceiptMarkPainter
-uses, so the two cannot drift apart.
+slip geometry — the fractions below are the same ones _SlipMarkPainter uses,
+so the two cannot drift apart.
 
 Run from the project root, after changing the accent or the mark:
 
@@ -23,7 +23,7 @@ Requires Pillow.
 import colorsys
 import os
 
-from PIL import Image, ImageDraw
+from PIL import Image, ImageDraw, ImageFilter
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 RES = os.path.join(ROOT, "android", "app", "src", "main", "res")
@@ -69,61 +69,104 @@ def diagonal_gradient(size):
     return img
 
 
-# The receipt, in fractions of the tile. These must match
-# _ReceiptMarkPainter in lib/core/sellora_ui.dart, or the icon on the home
-# screen stops matching the mark inside the app.
-LEFT, RIGHT = 0.29, 0.71
-BODY_TOP, BODY_BOTTOM, TIP = 0.215, 0.665, 0.755
-CORNER = 0.055
+# The slip, in fractions of the tile. These must match _SlipMarkPainter in
+# lib/core/sellora_ui.dart, or the icon on the home screen stops matching the
+# mark inside the app.
+LEFT, RIGHT = 0.31, 0.69
+BODY_TOP, BODY_BOTTOM, TIP = 0.19, 0.655, 0.745
+CORNER = 0.05
 TEETH = 4
-LINE_LEFT, LINE_RIGHT, SHORT_RIGHT = 0.365, 0.635, 0.545
-LINE_HEIGHT = 0.058
-LINE_TOPS = (0.305, 0.415, 0.525)
+TILT = -8  # degrees
+
+# Ruled lines: same left edge, growing right. That is the whole idea.
+LINE_LEFT = 0.385
+LINE_TOPS = (0.295, 0.405, 0.515)
+LINE_WIDTHS = (0.110, 0.165, 0.230)
+LINE_HEIGHT = 0.055
+
+# Paper: white at the top, a whisper of the accent at the torn edge.
+PAPER_TOP = (255, 255, 255)
+PAPER_BOTTOM = (233, 232, 250)
 
 
-def receipt_mask(canvas, scale=1.0, offset=0.0):
-    """A mask of the receipt with its ruled lines punched out.
+def vertical_gradient(size, a, b):
+    img = Image.new("RGB", (size, size))
+    px = img.load()
+    for y in range(size):
+        row = tuple(round(a[i] + (b[i] - a[i]) * y / (size - 1)) for i in range(3))
+        for x in range(size):
+            px[x, y] = row
+    return img
 
-    `scale` shrinks the mark about the centre, for the adaptive foreground,
-    where a launcher may crop away everything outside the middle 66 of 108dp.
+
+def slip_masks(canvas, scale=1.0):
+    """The slip silhouette, and the slip with its ruled lines punched out.
+
+    Two masks because the shadow comes from the silhouette: light does not fall
+    through the lines. `scale` shrinks the mark about the centre, for the
+    adaptive foreground, where a launcher may crop to the middle 66 of 108dp.
     """
 
     def at(f):
-        return (0.5 + (f - 0.5) * scale + offset) * canvas
+        return (0.5 + (f - 0.5) * scale) * canvas
 
-    mask = Image.new("L", (canvas, canvas), 0)
-    draw = ImageDraw.Draw(mask)
-
-    # Body: a rectangle with two rounded top corners. Drawn as a rounded
-    # rectangle with the bottom half squared off by a plain rectangle over it.
+    solid = Image.new("L", (canvas, canvas), 0)
+    d = ImageDraw.Draw(solid)
     radius = CORNER * scale * canvas
-    draw.rounded_rectangle(
+    d.rounded_rectangle(
         (at(LEFT), at(BODY_TOP), at(RIGHT), at(BODY_BOTTOM)),
         radius=radius,
         fill=255,
     )
-    draw.rectangle(
+    d.rectangle(
         (at(LEFT), at(BODY_TOP) + radius, at(RIGHT), at(BODY_BOTTOM)), fill=255
     )
 
-    # Torn bottom edge.
     span = RIGHT - LEFT
     points = [(at(LEFT), at(BODY_BOTTOM))]
     for i in range(TEETH):
         points.append((at(LEFT + span * (i * 2 + 1) / (TEETH * 2)), at(TIP)))
         points.append((at(LEFT + span * (i * 2 + 2) / (TEETH * 2)), at(BODY_BOTTOM)))
-    draw.polygon(points, fill=255)
+    d.polygon(points, fill=255)
 
-    # Ruled lines, cut back out of the shape.
-    for i, top in enumerate(LINE_TOPS):
-        right = SHORT_RIGHT if i == len(LINE_TOPS) - 1 else LINE_RIGHT
-        draw.rounded_rectangle(
-            (at(LINE_LEFT), at(top), at(right), at(top + LINE_HEIGHT)),
+    punched = solid.copy()
+    pd = ImageDraw.Draw(punched)
+    for top, width in zip(LINE_TOPS, LINE_WIDTHS):
+        pd.rounded_rectangle(
+            (at(LINE_LEFT), at(top), at(LINE_LEFT + width), at(top + LINE_HEIGHT)),
             radius=LINE_HEIGHT * scale * canvas / 2,
             fill=0,
         )
 
-    return mask
+    spin = dict(resample=Image.BICUBIC, center=(canvas / 2, canvas / 2))
+    return solid.rotate(TILT, **spin), punched.rotate(TILT, **spin)
+
+
+def blank(canvas):
+    return Image.new("RGBA", (canvas, canvas), (0, 0, 0, 0))
+
+
+def draw_mark(base, canvas, scale=1.0, shadow=True):
+    """Casts the slip's shadow, then lays the tinted paper over it."""
+    solid, punched = slip_masks(canvas, scale)
+
+    if shadow:
+        blurred = solid.filter(ImageFilter.GaussianBlur(canvas * 0.045))
+        dropped = blank(canvas)
+        dropped.paste(
+            Image.composite(
+                Image.new("RGBA", (canvas, canvas), (26, 20, 70, 87)),
+                blank(canvas),
+                blurred,
+            ),
+            (0, round(canvas * 0.028)),
+        )
+        base = Image.alpha_composite(base, dropped)
+
+    paper = Image.new("RGBA", (canvas, canvas))
+    paper.paste(vertical_gradient(canvas, PAPER_TOP, PAPER_BOTTOM), (0, 0))
+    paper.putalpha(255)
+    return Image.alpha_composite(base, Image.composite(paper, blank(canvas), punched))
 
 
 def legacy(size):
@@ -136,11 +179,26 @@ def legacy(size):
     )
     tile = Image.new("RGBA", (canvas, canvas), (0, 0, 0, 0))
     tile.paste(diagonal_gradient(canvas), (0, 0))
-    tile.putalpha(mask)
-    white = Image.new("RGBA", (canvas, canvas), (255, 255, 255, 255))
-    tile = Image.alpha_composite(tile, Image.composite(
-        white, Image.new("RGBA", (canvas, canvas), (0, 0, 0, 0)),
-        receipt_mask(canvas)))
+    tile = tile.convert("RGBA")
+
+    # The light, from the top left. Without it the tile is a flat swatch and the
+    # whole mark reads as clip art on a colour.
+    glow = Image.new("L", (canvas, canvas), 0)
+    ImageDraw.Draw(glow).ellipse(
+        (-canvas * 0.35, -canvas * 0.50, canvas * 0.80, canvas * 0.50), fill=78
+    )
+    glow = glow.filter(ImageFilter.GaussianBlur(canvas * 0.18))
+    tile = Image.alpha_composite(
+        tile,
+        Image.composite(
+            Image.new("RGBA", (canvas, canvas), (255, 255, 255, 255)),
+            blank(canvas),
+            glow,
+        ),
+    )
+
+    tile = draw_mark(tile, canvas)
+    tile.putalpha(Image.composite(mask, Image.new("L", (canvas, canvas), 0), mask))
     return tile.resize((size, size), Image.LANCZOS)
 
 
@@ -152,14 +210,10 @@ def foreground(size):
     it rather than filling the tile the way the legacy icon does.
     """
     canvas = size * SS
-    white = Image.new("RGBA", (canvas, canvas), (255, 255, 255, 255))
-    img = Image.composite(
-        white,
-        Image.new("RGBA", (canvas, canvas), (0, 0, 0, 0)),
-        # 0.72 keeps the whole mark inside the 66-of-108dp safe zone, so a
-        # launcher cropping to a circle cannot clip the torn edge.
-        receipt_mask(canvas, scale=0.72),
-    )
+    # 0.72 keeps the whole mark inside the 66-of-108dp safe zone, so a launcher
+    # cropping to a circle cannot clip the torn edge. No cast shadow here: the
+    # foreground is composited over a background it cannot see.
+    img = draw_mark(blank(canvas), canvas, scale=0.72, shadow=False)
     return img.resize((size, size), Image.LANCZOS)
 
 
