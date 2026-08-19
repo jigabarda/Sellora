@@ -144,6 +144,31 @@ class AuthController extends StateNotifier<AuthState> {
     state = AuthState(userId: id);
   }
 
+  /// Signs in the account a backup just restored, without asking for the
+  /// password again.
+  ///
+  /// Safe because the file already grants everything a session would: a backup
+  /// is plain JSON, so whoever can restore it can read every sale in it with a
+  /// text editor. Demanding the password here would protect nothing and would
+  /// strand the one person it is meant to help — someone whose phone is gone,
+  /// holding the only copy of their own records.
+  ///
+  /// Throws if [userId] is not in the database, which would otherwise leave a
+  /// session pointing at nobody.
+  Future<void> adoptRestoredSession(String userId) async {
+    final rows = await _db.query(
+      'users',
+      where: 'id = ?',
+      whereArgs: [userId],
+      limit: 1,
+    );
+    if (rows.isEmpty) {
+      throw AuthException('The restored account could not be found.');
+    }
+    await _prefs.setString(_prefActiveUserId, userId);
+    state = AuthState(userId: userId);
+  }
+
   Future<void> logout() async {
     await _prefs.remove(_prefActiveUserId);
     state = const AuthState(userId: null);
