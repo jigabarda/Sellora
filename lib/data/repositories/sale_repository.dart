@@ -71,6 +71,120 @@ WHERE business_id = ? AND created_at >= ? AND created_at < ?
     return sales;
   }
 
+  /// Every sale in the range, oldest first, with its lines.
+  ///
+  /// Unbounded on purpose: this backs the spreadsheet export, where a missing
+  /// row is a wrong total in someone's books. [listRecent]'s limit is right for
+  /// a screen and wrong here.
+  Future<List<Sale>> listBetween(
+    String businessId,
+    DateTime from,
+    DateTime toExclusive,
+  ) async {
+    final rows = await _db.query(
+      _sales,
+      where: 'business_id = ? AND created_at >= ? AND created_at < ?',
+      whereArgs: [
+        businessId,
+        from.millisecondsSinceEpoch,
+        toExclusive.millisecondsSinceEpoch,
+      ],
+      orderBy: 'created_at ASC',
+    );
+
+    // One query for every line in the range rather than one per sale: a year
+    // of sales is thousands of round trips otherwise, and this runs on phones.
+    final lineRows = await _db.rawQuery(
+      '''
+SELECT sl.* FROM $_lines sl
+INNER JOIN $_sales s ON s.id = sl.sale_id
+WHERE s.business_id = ? AND s.created_at >= ? AND s.created_at < ?
+''',
+      [
+        businessId,
+        from.millisecondsSinceEpoch,
+        toExclusive.millisecondsSinceEpoch,
+      ],
+    );
+    final bySale = <String, List<SaleLine>>{};
+    for (final row in lineRows) {
+      final line = SaleLine.fromMap(row);
+      (bySale[line.saleId] ??= <SaleLine>[]).add(line);
+    }
+
+    return rows
+        .map((r) => Sale.fromMap(r, lines: bySale[r['id']] ?? const []))
+        .toList(growable: false);
+  }
+
+  /// Revenue per calendar day, for the trend on the reports screen.
+  ///
+  /// Bucketed in Dart rather than SQL because the boundary that matters is the
+  /// owner's local midnight, and `created_at` is epoch milliseconds. Letting
+  /// SQLite group it would silently bucket by UTC and slide every day by the
+  /// timezone offset.
+  Future<Map<DateTime, double>> revenueByDay(
+    String businessId,
+    DateTime from,
+    DateTime toExclusive,
+  ) async {
+    final rows = await _db.query(
+      _sales,
+      columns: ['total', 'created_at'],
+      where: 'business_id = ? AND created_at >= ? AND created_at < ?',
+      whereArgs: [
+        businessId,
+        from.millisecondsSinceEpoch,
+        toExclusive.millisecondsSinceEpoch,
+      ],
+    );
+
+    final out = <DateTime, double>{};
+    for (final row in rows) {
+      final at =
+          DateTime.fromMillisecondsSinceEpoch(row['created_at']! as int);
+      final day = DateTime(at.year, at.month, at.day);
+      out[day] = (out[day] ?? 0) + ((row['total'] as num?) ?? 0).toDouble();
+    }
+    return out;
+  }
+
+  /// Units sold and revenue per product name, best first.
+  ///
+  /// [topProductsByRevenue] answers the same question for a screen and caps at
+  /// twenty; the export wants every product and the quantity beside the money.
+  Future<List<({String name, int qty, double revenue})>> productPerformance(
+    String businessId,
+    DateTime from,
+    DateTime toExclusive,
+  ) async {
+    final rows = await _db.rawQuery(
+      '''
+SELECT sl.name AS name,
+       SUM(sl.qty) AS qty,
+       SUM(sl.qty * sl.unit_price) AS rev
+FROM $_lines sl
+INNER JOIN $_sales s ON s.id = sl.sale_id
+WHERE s.business_id = ?
+  AND s.created_at >= ? AND s.created_at < ?
+GROUP BY sl.name
+ORDER BY rev DESC
+''',
+      [
+        businessId,
+        from.millisecondsSinceEpoch,
+        toExclusive.millisecondsSinceEpoch,
+      ],
+    );
+    return rows
+        .map((r) => (
+              name: r['name']! as String,
+              qty: ((r['qty'] as num?) ?? 0).toInt(),
+              revenue: ((r['rev'] as num?) ?? 0).toDouble(),
+            ))
+        .toList(growable: false);
+  }
+
   Future<Sale?> getById(String saleId) async {
     final rows =
         await _db.query(_sales, where: 'id = ?', whereArgs: [saleId], limit: 1);

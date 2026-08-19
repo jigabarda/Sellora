@@ -5,6 +5,7 @@ import 'package:sqflite/sqflite.dart';
 import 'core/dates.dart';
 import 'data/auth/auth_controller.dart';
 import 'data/backup/backup_service.dart';
+import 'data/export/report_export_service.dart';
 import 'data/insights/insight.dart';
 import 'data/insights/insights_service.dart';
 import 'data/models/entities.dart';
@@ -60,6 +61,28 @@ final refundRepositoryProvider = Provider<RefundRepository>(
 final insightsServiceProvider = Provider<InsightsService>(
   (ref) => InsightsService(ref.watch(databaseProvider)),
 );
+
+final reportExportServiceProvider = Provider<ReportExportService>(
+  (ref) => ReportExportService(
+    sales: ref.watch(saleRepositoryProvider),
+    expenses: ref.watch(expenseRepositoryProvider),
+    customers: ref.watch(customerRepositoryProvider),
+    businesses: ref.watch(businessRepositoryProvider),
+  ),
+);
+
+/// Revenue per calendar day across the reported period, for the trend.
+///
+/// Separate from [reportSummaryProvider] rather than folded into it: the
+/// summary is read by screens that have no chart, and a day-by-day scan is
+/// wasted work for them.
+final revenueByDayProvider = FutureProvider.autoDispose
+    .family<Map<DateTime, double>, ({String businessId, DateTime from, DateTime to})>(
+        (ref, args) async {
+  return ref
+      .watch(saleRepositoryProvider)
+      .revenueByDay(args.businessId, args.from, addDays(args.to, 1));
+});
 
 final backupServiceProvider = Provider<BackupService>(
   (ref) => BackupService(ref.watch(databaseProvider)),
