@@ -22,8 +22,13 @@ const backupFormatVersion = 1;
 /// first".
 const backupSchemaVersion = SelloraDatabase.schemaVersion;
 
-/// Parent-before-child. Restore inserts in this order so foreign keys hold.
-const _insertOrder = <String>[
+/// Every table a backup carries, parent-before-child so restore can insert in
+/// this order and have foreign keys hold.
+///
+/// Public so a test can compare it against the schema itself. A table added
+/// later and forgotten here would not fail anything — it would just quietly
+/// stop being backed up, and nobody finds that out until they restore.
+const backupTables = <String>[
   'users',
   'businesses',
   'categories',
@@ -127,7 +132,7 @@ class BackupService {
     };
 
     if (businessIds.isEmpty) {
-      for (final t in _insertOrder) {
+      for (final t in backupTables) {
         tables.putIfAbsent(t, () => const []);
       }
     } else {
@@ -158,7 +163,7 @@ WHERE s.business_id IN ($placeholders)
       'exportedAt': DateTime.now().millisecondsSinceEpoch,
       'userId': userId,
       'tables': {
-        for (final t in _insertOrder)
+        for (final t in backupTables)
           t: tables[t] ?? const <Map<String, Object?>>[],
       },
     };
@@ -265,7 +270,7 @@ WHERE s.business_id IN ($placeholders)
         }
       }
 
-      for (final table in _insertOrder) {
+      for (final table in backupTables) {
         final rows = tables[table] ?? const [];
         for (final row in rows) {
           await txn.insert(
@@ -323,7 +328,7 @@ WHERE s.business_id IN ($placeholders)
     }
 
     final out = <String, List<Map<String, Object?>>>{};
-    for (final table in _insertOrder) {
+    for (final table in backupTables) {
       final rows = raw[table];
       if (rows == null) {
         out[table] = const [];
