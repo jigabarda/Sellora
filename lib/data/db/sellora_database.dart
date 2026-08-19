@@ -7,7 +7,7 @@ class SelloraDatabase {
   SelloraDatabase._();
 
   static const _fileName = 'sellora.db';
-  static const _version = 7;
+  static const _version = 8;
 
   static Future<Database> open() async {
     final dir = await getApplicationDocumentsDirectory();
@@ -96,6 +96,12 @@ class SelloraDatabase {
     // had one — so no backfill is needed beyond the default.
     if (oldVersion < 7) {
       await _addColumn(db, 'sales', 'discount', 'REAL NOT NULL DEFAULT 0');
+    }
+    // Rental periods as dates. Nullable rather than defaulted: there is no
+    // sensible constant to backfill, and null already means "starts when the
+    // sale was recorded", which is what every existing rental meant.
+    if (oldVersion < 8) {
+      await _addColumn(db, 'sale_lines', 'starts_at', 'INTEGER');
     }
   }
 
@@ -313,6 +319,10 @@ CREATE TABLE sale_lines (
   -- How long it was rented for. 1 for anything sold outright, so the line
   -- total is always qty * unit_price * days and nothing has to branch.
   days INTEGER NOT NULL DEFAULT 1,
+  -- When the rental period starts. Null for anything sold outright, and null
+  -- on every line recorded before rentals had dates, in which case the sale's
+  -- own timestamp is the start — which is exactly what those rows meant.
+  starts_at INTEGER,
   -- How many of `qty` have come back. Only ever above zero for a rental, and
   -- allowed to be less than `qty`: nineteen of twenty chairs is a real
   -- Sunday, and forcing it to be all-or-nothing would make the owner lie.

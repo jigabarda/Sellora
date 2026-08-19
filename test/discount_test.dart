@@ -73,7 +73,8 @@ void main() {
         businessId: _bizId,
         discount: discount,
         lines: [
-          (productId: 'ice', name: 'Ice', qty: qty, unitPrice: 100, days: 1),
+          SaleLineDraft(
+              productId: 'ice', name: 'Ice', qty: qty, unitPrice: 100),
         ],
       );
 
@@ -146,7 +147,8 @@ void main() {
       businessId: _bizId,
       discount: 100,
       lines: [
-        (productId: 'chair', name: 'Chair', qty: 20, unitPrice: 10, days: 3),
+        const SaleLineDraft(
+            productId: 'chair', name: 'Chair', qty: 20, unitPrice: 10, days: 3),
       ],
     );
 

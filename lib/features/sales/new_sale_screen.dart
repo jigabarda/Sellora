@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../core/dates.dart';
 import '../../core/money.dart';
 import '../../core/sellora_ui.dart';
 import '../../data/models/entities.dart';
@@ -10,6 +11,7 @@ import '../../data/quick_entry/quick_command.dart';
 import '../../data/sales/sale_cart.dart';
 import '../../providers.dart';
 import 'discount_sheet.dart';
+import 'rental_period_sheet.dart';
 import 'quantity_sheet.dart';
 
 class NewSaleScreen extends ConsumerStatefulWidget {
@@ -248,15 +250,17 @@ class _NewSaleScreenState extends ConsumerState<NewSaleScreen> {
   }
 
   Future<void> _editDays(CartLine line) async {
-    final chosen = await askQuantity(
+    final from = line.startsAt;
+    final to = line.endsAt;
+    final chosen = await askRentalPeriod(
       context,
       productName: line.product.name,
-      current: line.days,
-      title: 'For how many days?',
-      unit: 'day',
+      current: from != null && to != null
+          ? DateTimeRange(start: from, end: to)
+          : null,
     );
     if (chosen == null || !mounted) return;
-    setState(() => _cart.setDays(line, chosen));
+    setState(() => _cart.setPeriod(line, chosen.start, chosen.end));
   }
 
   void _changeQty(CartLine line, int delta) {
@@ -402,11 +406,14 @@ class _CartCard extends StatelessWidget {
                       child: Row(
                         mainAxisSize: MainAxisSize.min,
                         children: [
-                          Icon(Icons.event_outlined, size: 14, color: t.accent),
+                          Icon(Icons.calendar_month_outlined,
+                              size: 14, color: t.accent),
                           Gap.w4,
                           Text(
-                            'For ${line.days} '
-                            '${line.days == 1 ? 'day' : 'days'} — change',
+                            line.startsAt == null
+                                ? 'Set the dates'
+                                : '${formatDay(line.startsAt!)} → '
+                                    '${formatDay(line.endsAt!)}',
                             style: context.text.labelSmall
                                 ?.copyWith(color: t.accent),
                           ),

@@ -8,6 +8,7 @@ import '../../core/sellora_ui.dart';
 import '../../data/models/entities.dart';
 import '../../data/notebook/notebook_line.dart';
 import '../../data/notebook/notebook_parser.dart';
+import '../../data/repositories/sale_repository.dart';
 import '../../providers.dart';
 import 'ocr_report_screen.dart';
 
@@ -190,14 +191,13 @@ class _NotebookCaptureScreenState extends ConsumerState<NotebookCaptureScreen> {
           businessId: widget.businessId,
           customerId: line.customer?.id,
           lines: [
-            (
+            // A page of the notebook records what was sold, not what was
+            // lent, so it takes the one-day default and no period.
+            SaleLineDraft(
               productId: product.id,
               name: product.name,
               qty: line.quantity,
               unitPrice: product.price,
-              // A page of the notebook records what was sold, not what was
-              // lent; nothing on it is a rental.
-              days: 1,
             ),
           ],
         );

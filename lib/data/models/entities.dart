@@ -151,6 +151,7 @@ class SaleLine {
     required this.unitPrice,
     this.days = 1,
     this.returnedQty = 0,
+    this.startsAt,
   });
 
   final String id;
@@ -163,6 +164,11 @@ class SaleLine {
   /// Days rented. One for anything sold outright, so [total] never has to ask
   /// which kind of line it is.
   final int days;
+
+  /// When the rental period starts. Null on a sold line, and null on rentals
+  /// recorded before periods were dates — the sale's own timestamp is the
+  /// start in that case.
+  final DateTime? startsAt;
 
   /// How many of [qty] have come back. Above zero only for a rental, and
   /// allowed to be short of [qty] — nineteen of twenty chairs is a real
@@ -183,6 +189,9 @@ class SaleLine {
         unitPrice: (m['unit_price'] as num).toDouble(),
         days: ((m['days'] as num?) ?? 1).toInt(),
         returnedQty: ((m['returned_qty'] as num?) ?? 0).toInt(),
+        startsAt: m['starts_at'] == null
+            ? null
+            : DateTime.fromMillisecondsSinceEpoch((m['starts_at'] as num).toInt()),
       );
 
   Map<String, Object?> toMap() => {
@@ -194,6 +203,7 @@ class SaleLine {
         'unit_price': unitPrice,
         'days': days,
         'returned_qty': returnedQty,
+        'starts_at': startsAt?.millisecondsSinceEpoch,
       };
 }
 

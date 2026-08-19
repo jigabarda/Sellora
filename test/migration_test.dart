@@ -170,8 +170,9 @@ void main() {
     expect(row['user_id'], isNull);
   });
 
-  test('v5 -> v7 adds rentals and discounts without disturbing what is there',
-      () async {
+  test(
+      'v5 -> v8 adds rentals, discounts and periods without disturbing what '
+      'is there', () async {
     await db.execute(_v3Products);
     await db.execute(_v5Sales);
     await db.execute(_v5SaleLines);
@@ -196,7 +197,7 @@ void main() {
     expect(await _columns(db, 'products'), contains('rental'));
     expect(
       await _columns(db, 'sale_lines'),
-      containsAll(['days', 'returned_qty']),
+      containsAll(['days', 'returned_qty', 'starts_at']),
     );
     expect(await _columns(db, 'sales'), contains('discount'));
 
@@ -206,13 +207,17 @@ void main() {
     final line = (await db.query('sale_lines')).single;
     expect(line['days'], 1);
     expect(line['returned_qty'], 0);
+    // Null, not backfilled: it already means "started when the sale was rung
+    // up", which is what a line without dates always meant.
+    expect(line['starts_at'], isNull);
 
     final sale = (await db.query('sales')).single;
     expect(sale['total'], 250.0, reason: 'the money recorded is unchanged');
     expect(sale['discount'], 0);
   });
 
-  test('re-running the v6/v7 steps is a no-op rather than an error', () async {
+  test('re-running the v6/v7/v8 steps is a no-op rather than an error',
+      () async {
     // The columns are added by asking the database what it already has, so an
     // upgrade that runs twice — a crash mid-migration, a version bumped in
     // two places — must not fail on a duplicate column.
@@ -224,6 +229,7 @@ void main() {
     await SelloraDatabase.migrate(db, 5);
 
     expect(await _columns(db, 'sales'), contains('discount'));
+    expect(await _columns(db, 'sale_lines'), contains('starts_at'));
   });
 
   test('v2 -> v5 adds the product columns without touching users again',

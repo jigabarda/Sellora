@@ -90,13 +90,8 @@ void main() {
     final saleId = await sales.recordSale(
       businessId: _bizId,
       lines: [
-        (
-          productId: 'chair',
-          name: 'Chair',
-          qty: 20,
-          unitPrice: 10,
-          days: 3,
-        ),
+        const SaleLineDraft(
+            productId: 'chair', name: 'Chair', qty: 20, unitPrice: 10, days: 3),
       ],
     );
 
@@ -112,7 +107,8 @@ void main() {
     final saleId = await sales.recordSale(
       businessId: _bizId,
       lines: [
-        (productId: 'water', name: 'Water', qty: 2, unitPrice: 25, days: 1),
+        const SaleLineDraft(
+            productId: 'water', name: 'Water', qty: 2, unitPrice: 25),
       ],
     );
 
@@ -125,7 +121,8 @@ void main() {
     await sales.recordSale(
       businessId: _bizId,
       lines: [
-        (productId: 'chair', name: 'Chair', qty: 20, unitPrice: 10, days: 3),
+        const SaleLineDraft(
+            productId: 'chair', name: 'Chair', qty: 20, unitPrice: 10, days: 3),
       ],
     );
 
@@ -138,7 +135,8 @@ void main() {
     await sales.recordSale(
       businessId: _bizId,
       lines: [
-        (productId: 'chair', name: 'Chair', qty: 20, unitPrice: 10, days: 3),
+        const SaleLineDraft(
+            productId: 'chair', name: 'Chair', qty: 20, unitPrice: 10, days: 3),
       ],
     );
     expect(await _stockOf(db, 'chair'), 30);
@@ -160,7 +158,8 @@ void main() {
     await sales.recordSale(
       businessId: _bizId,
       lines: [
-        (productId: 'chair', name: 'Chair', qty: 20, unitPrice: 10, days: 1),
+        const SaleLineDraft(
+            productId: 'chair', name: 'Chair', qty: 20, unitPrice: 10),
       ],
     );
 
@@ -181,7 +180,8 @@ void main() {
     await sales.recordSale(
       businessId: _bizId,
       lines: [
-        (productId: 'chair', name: 'Chair', qty: 5, unitPrice: 10, days: 1),
+        const SaleLineDraft(
+            productId: 'chair', name: 'Chair', qty: 5, unitPrice: 10),
       ],
     );
 
@@ -200,7 +200,8 @@ void main() {
     final saleId = await sales.recordSale(
       businessId: _bizId,
       lines: [
-        (productId: 'water', name: 'Water', qty: 2, unitPrice: 25, days: 1),
+        const SaleLineDraft(
+            productId: 'water', name: 'Water', qty: 2, unitPrice: 25),
       ],
     );
 
@@ -225,8 +226,10 @@ void main() {
     await sales.recordSale(
       businessId: _bizId,
       lines: [
-        (productId: 'chair', name: 'Chair', qty: 4, unitPrice: 10, days: 2),
-        (productId: 'water', name: 'Water', qty: 1, unitPrice: 25, days: 1),
+        const SaleLineDraft(
+            productId: 'chair', name: 'Chair', qty: 4, unitPrice: 10, days: 2),
+        const SaleLineDraft(
+            productId: 'water', name: 'Water', qty: 1, unitPrice: 25),
       ],
     );
 
@@ -242,8 +245,10 @@ void main() {
     await sales.recordSale(
       businessId: _bizId,
       lines: [
-        (productId: 'chair', name: 'Chair', qty: 4, unitPrice: 10, days: 2),
-        (productId: 'water', name: 'Water', qty: 1, unitPrice: 25, days: 1),
+        const SaleLineDraft(
+            productId: 'chair', name: 'Chair', qty: 4, unitPrice: 10, days: 2),
+        const SaleLineDraft(
+            productId: 'water', name: 'Water', qty: 1, unitPrice: 25),
       ],
     );
     final out = await sales.listOutstandingRentals(_bizId);
@@ -254,7 +259,8 @@ void main() {
         .map((r) => '${r['reason']}:${r['delta']}')
         .toList();
 
-    expect(reasons, containsAll(['rental_out:-4', 'sale:-1', 'rental_return:4']));
+    expect(
+        reasons, containsAll(['rental_out:-4', 'sale:-1', 'rental_return:4']));
   });
 
   test('an untracked rental still stops being outstanding', () async {
@@ -265,13 +271,12 @@ void main() {
     await sales.recordSale(
       businessId: _bizId,
       lines: [
-        (
-          productId: 'sound',
-          name: 'Sound System',
-          qty: 1,
-          unitPrice: 500,
-          days: 2,
-        ),
+        const SaleLineDraft(
+            productId: 'sound',
+            name: 'Sound System',
+            qty: 1,
+            unitPrice: 500,
+            days: 2),
       ],
     );
 
@@ -282,20 +287,105 @@ void main() {
     expect(await sales.listOutstandingRentals(_bizId), isEmpty);
   });
 
+  test('a stated start date drives the due date, not the till time', () async {
+    // A booking written up on Friday for chairs going out on Saturday is due
+    // back on the Tuesday, not the Monday. Before start dates existed this
+    // was always measured from when the sale was rung up.
+    await _product(db, id: 'chair', name: 'Chair', stock: 50);
+    await sales.recordSale(
+      businessId: _bizId,
+      lines: [
+        SaleLineDraft(
+          productId: 'chair',
+          name: 'Chair',
+          qty: 20,
+          unitPrice: 10,
+          days: 3,
+          startsAt: DateTime(2026, 8, 22),
+        ),
+      ],
+    );
+
+    final rental = (await sales.listOutstandingRentals(_bizId)).single;
+    expect(rental.rentedAt, DateTime(2026, 8, 22));
+    expect(rental.dueAt, DateTime(2026, 8, 25));
+  });
+
+  test('a booking that has not started yet is not overdue', () async {
+    await _product(db, id: 'chair', name: 'Chair', stock: 50);
+    await sales.recordSale(
+      businessId: _bizId,
+      lines: [
+        SaleLineDraft(
+          productId: 'chair',
+          name: 'Chair',
+          qty: 4,
+          unitPrice: 10,
+          days: 2,
+          startsAt: DateTime(2030, 1, 10),
+        ),
+      ],
+    );
+
+    final rental = (await sales.listOutstandingRentals(_bizId)).single;
+    expect(rental.isOverdue(DateTime(2030, 1, 11)), isFalse);
+    expect(rental.isOverdue(DateTime(2030, 1, 13)), isTrue);
+  });
+
+  test('a rental with no stated period still starts when it was rung up',
+      () async {
+    // Every rental recorded before dates existed is this case, and it has to
+    // keep meaning what it meant.
+    await _product(db, id: 'chair', name: 'Chair', stock: 50);
+    final before = DateTime.now();
+    await sales.recordSale(
+      businessId: _bizId,
+      lines: [
+        const SaleLineDraft(
+            productId: 'chair', name: 'Chair', qty: 1, unitPrice: 10, days: 2),
+      ],
+    );
+
+    final rental = (await sales.listOutstandingRentals(_bizId)).single;
+    expect(
+      rental.rentedAt.isBefore(before.subtract(const Duration(seconds: 5))),
+      isFalse,
+    );
+    expect(rental.dueAt.difference(rental.rentedAt).inDays, 2);
+  });
+
+  test('a sold line is given no period at all', () async {
+    // Otherwise it would sit in front of the return screen's query looking
+    // like something a customer still has.
+    await _product(db, id: 'water', name: 'Water', rental: false, stock: 10);
+    final saleId = await sales.recordSale(
+      businessId: _bizId,
+      lines: [
+        const SaleLineDraft(
+            productId: 'water', name: 'Water', qty: 2, unitPrice: 25),
+      ],
+    );
+
+    final rows =
+        await db.query('sale_lines', where: 'sale_id = ?', whereArgs: [saleId]);
+    expect(rows.single['starts_at'], isNull);
+  });
+
   test('due date follows the days agreed', () async {
     await _product(db, id: 'chair', name: 'Chair', stock: 50);
     await sales.recordSale(
       businessId: _bizId,
       lines: [
-        (productId: 'chair', name: 'Chair', qty: 1, unitPrice: 10, days: 3),
+        const SaleLineDraft(
+            productId: 'chair', name: 'Chair', qty: 1, unitPrice: 10, days: 3),
       ],
     );
 
     final rental = (await sales.listOutstandingRentals(_bizId)).single;
     expect(rental.dueAt.difference(rental.rentedAt).inDays, 3);
-    expect(rental.isOverdue(rental.dueAt.add(const Duration(hours: 1))), isTrue);
     expect(
-        rental.isOverdue(rental.dueAt.subtract(const Duration(hours: 1))),
+        rental.isOverdue(rental.dueAt.add(const Duration(hours: 1))), isTrue);
+    expect(rental.isOverdue(rental.dueAt.subtract(const Duration(hours: 1))),
         isFalse);
   });
 }

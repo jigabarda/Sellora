@@ -3,6 +3,35 @@ import 'package:sqflite/sqflite.dart';
 import '../models/entities.dart';
 import '../../util/ids.dart';
 
+/// One line of a sale that has not been recorded yet.
+///
+/// A class rather than a record because the optional half keeps growing —
+/// days, then a start date — and a record has no defaults, so every new field
+/// forced every existing caller to spell out a value it did not care about.
+class SaleLineDraft {
+  const SaleLineDraft({
+    required this.productId,
+    required this.name,
+    required this.qty,
+    required this.unitPrice,
+    this.days = 1,
+    this.startsAt,
+  });
+
+  final String productId;
+  final String name;
+  final int qty;
+  final double unitPrice;
+
+  /// One for anything sold outright, so the money is always
+  /// `qty * unitPrice * days` and nothing has to branch.
+  final int days;
+
+  /// When the rental period starts. Null means "when this is recorded", and
+  /// is always null for something sold outright.
+  final DateTime? startsAt;
+}
+
 class SaleRepository {
   SaleRepository(this._db);
 
@@ -198,15 +227,7 @@ ORDER BY rev DESC
   /// Records sale, line items, decrements stock, writes ledger rows.
   Future<String> recordSale({
     required String businessId,
-    required List<
-            ({
-              String productId,
-              String name,
-              int qty,
-              double unitPrice,
-              int days
-            })>
-        lines,
+    required List<SaleLineDraft> lines,
     String? customerId,
     double discount = 0,
   }) async {
@@ -283,6 +304,12 @@ ORDER BY rev DESC
           'unit_price': l.unitPrice,
           'days': l.days < 1 ? 1 : l.days,
           'returned_qty': 0,
+          // Only rentals carry a period. Stamping a start on a sold line
+          // would put it in front of the return screen's query.
+          'starts_at': rented[l.productId] == true
+              ? (l.startsAt ?? DateTime.fromMillisecondsSinceEpoch(now))
+                  .millisecondsSinceEpoch
+              : null,
         });
 
         if (tracked[l.productId] != true) continue;
@@ -326,14 +353,14 @@ ORDER BY rev DESC
     final rows = await _db.rawQuery(
       """
 SELECT sl.id AS line_id, sl.sale_id, sl.product_id, sl.name, sl.qty,
-       sl.returned_qty, sl.days, sl.unit_price,
+       sl.returned_qty, sl.days, sl.unit_price, sl.starts_at,
        s.created_at, c.name AS customer_name
 FROM $_lines sl
 INNER JOIN $_sales s ON s.id = sl.sale_id
 INNER JOIN $_products p ON p.id = sl.product_id
 LEFT JOIN customers c ON c.id = s.customer_id
 WHERE s.business_id = ? AND p.rental = 1 AND sl.returned_qty < sl.qty
-ORDER BY s.created_at ASC
+ORDER BY COALESCE(sl.starts_at, s.created_at) ASC
 """,
       [businessId],
     );
@@ -349,8 +376,11 @@ ORDER BY s.created_at ASC
               days: ((r['days'] as num?) ?? 1).toInt(),
               unitPrice: (r['unit_price'] as num).toDouble(),
               customerName: r['customer_name'] as String?,
-              rentedAt:
-                  DateTime.fromMillisecondsSinceEpoch(r['created_at']! as int),
+              // The stated start when there is one; otherwise when the sale
+              // was rung up, which is what a line without dates meant.
+              rentedAt: DateTime.fromMillisecondsSinceEpoch(
+                ((r['starts_at'] as num?) ?? (r['created_at'] as num)).toInt(),
+              ),
             ))
         .toList(growable: false);
   }

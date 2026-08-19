@@ -7,7 +7,9 @@ import '../../core/sellora_ui.dart';
 import '../../data/models/entities.dart';
 import '../../data/sales/sale_cart.dart';
 import '../../providers.dart';
+import '../../core/dates.dart';
 import 'discount_sheet.dart';
+import 'rental_period_sheet.dart';
 import 'quantity_sheet.dart';
 
 /// Counter mode: the products on screen, one tap each.
@@ -555,15 +557,17 @@ class _CartSheetState extends State<_CartSheet> {
   }
 
   Future<void> _editDays(CartLine line) async {
-    final chosen = await askQuantity(
+    final from = line.startsAt;
+    final to = line.endsAt;
+    final chosen = await askRentalPeriod(
       context,
       productName: line.product.name,
-      current: line.days,
-      title: 'For how many days?',
-      unit: 'day',
+      current: from != null && to != null
+          ? DateTimeRange(start: from, end: to)
+          : null,
     );
     if (chosen == null || !mounted) return;
-    setState(() => widget.cart.setDays(line, chosen));
+    setState(() => widget.cart.setPeriod(line, chosen.start, chosen.end));
     widget.onChanged();
   }
 
@@ -602,6 +606,8 @@ class _CartSheetState extends State<_CartSheet> {
                                 line.isRental
                                     ? '${line.qty} × '
                                         '${formatPhp(line.product.price)} a day'
+                                        ' × ${line.days} '
+                                        '${line.days == 1 ? 'day' : 'days'}'
                                     : '${line.qty} × '
                                         '${formatPhp(line.product.price)}',
                                 style: context.text.bodySmall,
@@ -620,13 +626,15 @@ class _CartSheetState extends State<_CartSheet> {
                                     child: Row(
                                       mainAxisSize: MainAxisSize.min,
                                       children: [
-                                        Icon(Icons.event_outlined,
+                                        Icon(Icons.calendar_month_outlined,
                                             size: 14, color: t.accent),
                                         Gap.w4,
                                         Text(
-                                          'For ${line.days} '
-                                          '${line.days == 1 ? 'day' : 'days'}'
-                                          ' — change',
+                                          line.startsAt == null
+                                              ? 'Set the dates'
+                                              : '${formatDay(line.startsAt!)}'
+                                                  ' → '
+                                                  '${formatDay(line.endsAt!)}',
                                           style: context.text.labelSmall
                                               ?.copyWith(color: t.accent),
                                         ),

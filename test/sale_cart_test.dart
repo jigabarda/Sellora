@@ -159,6 +159,106 @@ void main() {
     expect(cart.total, 400);
   });
 
+  group('rental periods are set by picking two dates', () {
+    test('the day count is the span between them', () {
+      // 19th to the 22nd is three days, and the 22nd is when it comes back.
+      // Counting inclusively would make it four and quietly overcharge.
+      final cart = SaleCart()
+        ..add(_product(price: 10, stock: 50, rental: true), qty: 20);
+      cart.setPeriod(
+          cart.lines.single, DateTime(2026, 8, 19), DateTime(2026, 8, 22));
+
+      expect(cart.lines.single.days, 3);
+      expect(cart.total, 600, reason: '20 chairs x P10 x 3 days');
+    });
+
+    test('the end date comes back out of the day count unchanged', () {
+      // The return screen derives the due date the same way, so if these two
+      // ever disagreed the app would chase people up on the wrong day.
+      final cart = SaleCart()..add(_product(rental: true));
+      cart.setPeriod(
+          cart.lines.single, DateTime(2026, 8, 19), DateTime(2026, 8, 22));
+
+      expect(cart.lines.single.endsAt, DateTime(2026, 8, 22));
+    });
+
+    test('a period across a month end lands on a real date', () {
+      final cart = SaleCart()..add(_product(rental: true));
+      cart.setPeriod(
+          cart.lines.single, DateTime(2026, 8, 30), DateTime(2026, 9, 2));
+
+      expect(cart.lines.single.days, 3);
+      expect(cart.lines.single.endsAt, DateTime(2026, 9, 2));
+    });
+
+    test('out and back the same day is charged as one', () {
+      // Zero days would zero the money, and nobody hires chairs for nothing.
+      final cart = SaleCart()..add(_product(price: 10, rental: true), qty: 5);
+      cart.setPeriod(
+          cart.lines.single, DateTime(2026, 8, 19), DateTime(2026, 8, 19));
+
+      expect(cart.lines.single.days, 1);
+      expect(cart.total, 50);
+    });
+
+    test('the time of day is discarded, so a period is whole days', () {
+      final cart = SaleCart()..add(_product(rental: true));
+      cart.setPeriod(cart.lines.single, DateTime(2026, 8, 19, 23, 59),
+          DateTime(2026, 8, 22, 0, 1));
+
+      expect(cart.lines.single.days, 3, reason: 'not 2, and not 4');
+      expect(cart.lines.single.startsAt, DateTime(2026, 8, 19));
+    });
+
+    test('a second rental inherits the period already agreed', () {
+      // Chairs and tables go out for the same weekend. Picking the dates once
+      // per product would be the same tapping this feature exists to remove.
+      final cart = SaleCart()..add(_product(id: 'chair', rental: true));
+      cart.setPeriod(
+          cart.lines.single, DateTime(2026, 8, 19), DateTime(2026, 8, 22));
+
+      cart.add(_product(id: 'table', price: 20, rental: true));
+      final table = cart.lines.last;
+
+      expect(table.days, 3);
+      expect(table.startsAt, DateTime(2026, 8, 19));
+    });
+
+    test('something sold outright takes no period from the cart', () {
+      final cart = SaleCart()..add(_product(id: 'chair', rental: true));
+      cart.setPeriod(
+          cart.lines.single, DateTime(2026, 8, 19), DateTime(2026, 8, 22));
+
+      cart.add(_product(id: 'ice', price: 60));
+      final ice = cart.lines.last;
+
+      expect(ice.days, 1);
+      expect(ice.startsAt, isNull);
+      expect(cart.toSaleLines().last.startsAt, isNull);
+    });
+
+    test('the period survives a quantity change', () {
+      final cart = SaleCart()
+        ..add(_product(price: 10, stock: 50, rental: true), qty: 5);
+      cart.setPeriod(
+          cart.lines.single, DateTime(2026, 8, 19), DateTime(2026, 8, 23));
+      cart.setQuantity(cart.lines.single, 10);
+
+      expect(cart.lines.single.days, 4);
+      expect(cart.total, 400);
+    });
+
+    test('the drafts handed to the repository carry the start date', () {
+      final cart = SaleCart()..add(_product(rental: true), qty: 2);
+      cart.setPeriod(
+          cart.lines.single, DateTime(2026, 8, 19), DateTime(2026, 8, 22));
+
+      final draft = cart.toSaleLines().single;
+      expect(draft.days, 3);
+      expect(draft.startsAt, DateTime(2026, 8, 19));
+    });
+  });
+
   test('clear empties everything', () {
     final cart = SaleCart()
       ..add(_product(id: 'a'))
