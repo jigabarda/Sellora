@@ -117,6 +117,15 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                         ),
                       ],
                     ),
+                    // Someone typing a password that no longer exists on a
+                    // replacement phone needs this here, not buried behind an
+                    // account they have not got yet.
+                    TextButton.icon(
+                      onPressed: () => context.push('/restore'),
+                      icon: const Icon(Icons.settings_backup_restore_outlined,
+                          size: 18),
+                      label: const Text('Restore from a backup file'),
+                    ),
                   ],
                 ),
               ),

@@ -91,7 +91,9 @@ void main() {
       await harness.container.read(authControllerProvider.notifier).logout();
       await settle(tester);
 
-      for (final path in ['/welcome', '/login', '/register']) {
+      // `/restore` belongs in this list, not the signed-in one: it is the only
+      // way back for someone whose phone is gone and who has no account yet.
+      for (final path in ['/welcome', '/login', '/register', '/restore']) {
         await openRoute(tester, harness, path);
       }
     });

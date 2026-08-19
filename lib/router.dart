@@ -9,6 +9,7 @@ import 'features/auth/landing_screen.dart';
 import 'features/auth/login_screen.dart';
 import 'features/auth/register_screen.dart';
 import 'features/backup/backup_screen.dart';
+import 'features/backup/restore_screen.dart';
 import 'features/business/new_business_screen.dart';
 import 'features/categories/categories_screen.dart';
 import 'features/customers/customer_form_screen.dart';
@@ -71,8 +72,14 @@ final goRouterProvider = Provider<GoRouter>((ref) {
     redirect: (context, state) {
       final loggedIn = ref.read(authControllerProvider).userId != null;
       final loc = state.matchedLocation;
-      final authRoute =
-          loc == '/welcome' || loc == '/login' || loc == '/register';
+      // `/restore` is deliberately in here. Recovering from a backup is the
+      // one thing a signed-out person with no account must be able to do —
+      // the file is how they get an account back at all, and sending them to
+      // register first would make them restore into a throwaway.
+      final authRoute = loc == '/welcome' ||
+          loc == '/login' ||
+          loc == '/register' ||
+          loc == '/restore';
       if (!loggedIn && !authRoute) return '/welcome';
       if (loggedIn && authRoute) return '/';
       return null;
@@ -92,6 +99,11 @@ final goRouterProvider = Provider<GoRouter>((ref) {
         path: '/register',
         name: 'register',
         builder: (context, state) => const RegisterScreen(),
+      ),
+      GoRoute(
+        path: '/restore',
+        name: 'restore',
+        builder: (context, state) => const RestoreScreen(),
       ),
       GoRoute(
         path: '/',
