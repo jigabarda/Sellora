@@ -1,26 +1,27 @@
-"""Regenerates the Android launcher icon from the same shapes as the in-app mark.
+"""Regenerates the Android launcher icon from the same curve as the in-app mark.
 
-The icon is not hand-drawn art: it is the `SelloraLogo` widget expressed as
-PNGs, so the tile on the home screen and the mark inside the app cannot drift
-apart. Both take the accent colour, the 28%-of-the-side squircle radius, and the
-slip geometry — the fractions below are the same ones _SlipMarkPainter uses,
-so the two cannot drift apart.
+The icon is not separate artwork: it is `SelloraLogo` expressed as PNGs, drawn
+from the same bezier control points and the same accent colour, so the tile on
+the home screen and the mark inside the app cannot drift apart. The only thing
+the icon adds is a white ground — the app does not need one, because its canvas
+is already near-white, but an icon needs something to sit on.
 
-Run from the project root, after changing the accent or the mark:
+Run from the project root, after changing the accent or the curve:
 
     python tool/generate_launcher_icon.py
 
 Writes, for every density:
-  * mipmap-*/ic_launcher.png             legacy, full-bleed squircle
+  * mipmap-*/ic_launcher.png             legacy, white squircle + mark
   * mipmap-*/ic_launcher_foreground.png  adaptive foreground, mark on transparency
 and once:
-  * drawable/ic_launcher_background.xml  adaptive background, the gradient
+  * drawable/ic_launcher_background.xml  adaptive background, white
   * mipmap-anydpi-v26/ic_launcher.xml    ties the two together
 
 Requires Pillow.
 """
 
 import colorsys
+import math
 import os
 
 from PIL import Image, ImageDraw, ImageFilter
@@ -31,190 +32,157 @@ RES = os.path.join(ROOT, "android", "app", "src", "main", "res")
 # lib/core/sellora_tokens.dart -> SelloraTokens.light.accent
 ACCENT = (0x4F, 0x46, 0xE5)
 
-# Legacy icon: the launcher scales one bitmap per bucket.
 LEGACY = {"mdpi": 48, "hdpi": 72, "xhdpi": 96, "xxhdpi": 144, "xxxhdpi": 192}
 # Adaptive icons are authored on a 108dp canvas whatever the density.
 ADAPTIVE = {"mdpi": 108, "hdpi": 162, "xhdpi": 216, "xxhdpi": 324, "xxxhdpi": 432}
 
-# Drawn large and reduced, so the squircle and the torn edge get real
-# antialiasing instead of the stair-stepping PIL leaves on a 48px shape.
+# Drawn large and reduced, because a swept curve needs real antialiasing.
 SS = 8
 
 
-def shifted(rgb, d_light, d_sat=0.0):
-    """The accent moved in HSL, matching SelloraLogo's gradient stops."""
+def shifted(rgb, d_light):
+    """The accent moved in HSL, matching _SwooshPainter's gradient stops."""
     r, g, b = (c / 255 for c in rgb)
     h, l, s = colorsys.rgb_to_hls(r, g, b)
-    l = min(1.0, max(0.0, l + d_light))
-    s = min(1.0, max(0.0, s + d_sat))
-    r, g, b = colorsys.hls_to_rgb(h, l, s)
+    r, g, b = colorsys.hls_to_rgb(h, min(1.0, max(0.0, l + d_light)), s)
     return tuple(round(c * 255) for c in (r, g, b))
 
 
-TOP = shifted(ACCENT, +0.10, -0.05)
-BOTTOM = shifted(ACCENT, -0.16)
+LIGHT = shifted(ACCENT, +0.16)
+DEEP = shifted(ACCENT, -0.14)
+
+# The curve. These control points must match _SwooshPainter in
+# lib/core/sellora_ui.dart, or the home screen stops matching the app.
+BODY = ((0.145, 0.760), (0.345, 0.760), (0.420, 0.285), (0.700, 0.208))
+TAIL = ((0.645, 0.230), (0.780, 0.192), (0.822, 0.320), (0.752, 0.430))
+BODY_WIDTH = 0.205
+TAIL_WIDTH = 0.090
 
 
-def diagonal_gradient(size):
-    """Top-left to bottom-right, the same direction as the widget's gradient."""
-    img = Image.new("RGB", (size, size))
-    px = img.load()
-    for y in range(size):
-        for x in range(size):
-            # Distance along the diagonal, normalised.
-            t = (x + y) / (2 * (size - 1)) if size > 1 else 0
-            px[x, y] = tuple(
-                round(TOP[i] + (BOTTOM[i] - TOP[i]) * t) for i in range(3)
-            )
-    return img
+def bezier(control, steps=240):
+    out = []
+    for i in range(steps + 1):
+        t = i / steps
+        u = 1 - t
+        out.append((
+            u**3 * control[0][0] + 3 * u * u * t * control[1][0]
+            + 3 * u * t * t * control[2][0] + t**3 * control[3][0],
+            u**3 * control[0][1] + 3 * u * u * t * control[1][1]
+            + 3 * u * t * t * control[2][1] + t**3 * control[3][1],
+        ))
+    return out
 
 
-# The slip, in fractions of the tile. These must match _SlipMarkPainter in
-# lib/core/sellora_ui.dart, or the icon on the home screen stops matching the
-# mark inside the app.
-LEFT, RIGHT = 0.31, 0.69
-BODY_TOP, BODY_BOTTOM, TIP = 0.19, 0.655, 0.745
-CORNER = 0.05
-TEETH = 4
-TILT = -8  # degrees
+def sweep(control, width_at, canvas, scale=1.0):
+    """Offset a spine either side by a varying half-width -> a closed outline.
 
-# Ruled lines: same left edge, growing right. That is the whole idea.
-LINE_LEFT = 0.385
-LINE_TOPS = (0.295, 0.405, 0.515)
-LINE_WIDTHS = (0.110, 0.165, 0.230)
-LINE_HEIGHT = 0.055
-
-# Paper: white at the top, a whisper of the accent at the torn edge.
-PAPER_TOP = (255, 255, 255)
-PAPER_BOTTOM = (233, 232, 250)
-
-
-def vertical_gradient(size, a, b):
-    img = Image.new("RGB", (size, size))
-    px = img.load()
-    for y in range(size):
-        row = tuple(round(a[i] + (b[i] - a[i]) * y / (size - 1)) for i in range(3))
-        for x in range(size):
-            px[x, y] = row
-    return img
-
-
-def slip_masks(canvas, scale=1.0):
-    """The slip silhouette, and the slip with its ruled lines punched out.
-
-    Two masks because the shadow comes from the silhouette: light does not fall
-    through the lines. `scale` shrinks the mark about the centre, for the
-    adaptive foreground, where a launcher may crop to the middle 66 of 108dp.
+    This is the whole technique: the stroke is full where the curve turns and
+    lifts away to nothing at the tip, which is what a fixed-width line cannot
+    do and what makes the mark look drawn rather than assembled.
     """
+    spine = bezier(control)
+    n = len(spine)
 
-    def at(f):
-        return (0.5 + (f - 0.5) * scale) * canvas
+    def at(a, b):
+        # Scaled about the centre, for the adaptive safe zone.
+        return ((0.5 + (a - 0.5) * scale) * canvas,
+                (0.5 + (b - 0.5) * scale) * canvas)
 
-    solid = Image.new("L", (canvas, canvas), 0)
-    d = ImageDraw.Draw(solid)
-    radius = CORNER * scale * canvas
-    d.rounded_rectangle(
-        (at(LEFT), at(BODY_TOP), at(RIGHT), at(BODY_BOTTOM)),
-        radius=radius,
-        fill=255,
-    )
-    d.rectangle(
-        (at(LEFT), at(BODY_TOP) + radius, at(RIGHT), at(BODY_BOTTOM)), fill=255
-    )
+    left, right = [], []
+    for i, (x, y) in enumerate(spine):
+        px, py = spine[max(0, i - 1)]
+        nx, ny = spine[min(n - 1, i + 1)]
+        dx, dy = nx - px, ny - py
+        length = math.hypot(dx, dy) or 1e-6
+        ox, oy = -dy / length, dx / length
+        half = width_at(i / (n - 1)) / 2
+        left.append(at(x + ox * half, y + oy * half))
+        right.append(at(x - ox * half, y - oy * half))
+    return left + right[::-1]
 
-    span = RIGHT - LEFT
-    points = [(at(LEFT), at(BODY_BOTTOM))]
-    for i in range(TEETH):
-        points.append((at(LEFT + span * (i * 2 + 1) / (TEETH * 2)), at(TIP)))
-        points.append((at(LEFT + span * (i * 2 + 2) / (TEETH * 2)), at(BODY_BOTTOM)))
-    d.polygon(points, fill=255)
 
-    punched = solid.copy()
-    pd = ImageDraw.Draw(punched)
-    for top, width in zip(LINE_TOPS, LINE_WIDTHS):
-        pd.rounded_rectangle(
-            (at(LINE_LEFT), at(top), at(LINE_LEFT + width), at(top + LINE_HEIGHT)),
-            radius=LINE_HEIGHT * scale * canvas / 2,
-            fill=0,
-        )
+def body_width(t):
+    """Full at the start, lifting away to a point."""
+    return BODY_WIDTH * (1 - 0.84 * t)
 
-    spin = dict(resample=Image.BICUBIC, center=(canvas / 2, canvas / 2))
-    return solid.rotate(TILT, **spin), punched.rotate(TILT, **spin)
+
+def tail_width(t):
+    """Fat in the middle, nothing at either end."""
+    return TAIL_WIDTH * (0.05 + 0.95 * math.sin(math.pi * t) ** 0.7)
 
 
 def blank(canvas):
     return Image.new("RGBA", (canvas, canvas), (0, 0, 0, 0))
 
 
+def mask_of(canvas, points):
+    m = Image.new("L", (canvas, canvas), 0)
+    ImageDraw.Draw(m).polygon(points, fill=255)
+    return m
+
+
+def diagonal_gradient(canvas, a, b):
+    """Top-right to bottom-left, the same direction as the widget's shader."""
+    img = Image.new("RGB", (canvas, canvas))
+    px = img.load()
+    for y in range(canvas):
+        for x in range(canvas):
+            t = min(1.0, max(0.0, ((canvas - 1 - x) + y) / (2 * (canvas - 1))))
+            px[x, y] = tuple(round(a[i] + (b[i] - a[i]) * t) for i in range(3))
+    return img
+
+
+def paint(mask, canvas, alpha=255):
+    g = Image.new("RGBA", (canvas, canvas))
+    g.paste(diagonal_gradient(canvas, LIGHT, DEEP), (0, 0))
+    g.putalpha(Image.composite(Image.new("L", (canvas, canvas), alpha),
+                               Image.new("L", (canvas, canvas), 0), mask))
+    return g
+
+
 def draw_mark(base, canvas, scale=1.0, shadow=True):
-    """Casts the slip's shadow, then lays the tinted paper over it."""
-    solid, punched = slip_masks(canvas, scale)
+    body = mask_of(canvas, sweep(BODY, body_width, canvas, scale))
+    tail = mask_of(canvas, sweep(TAIL, tail_width, canvas, scale))
 
     if shadow:
-        blurred = solid.filter(ImageFilter.GaussianBlur(canvas * 0.045))
+        blurred = body.filter(ImageFilter.GaussianBlur(canvas * 0.038))
         dropped = blank(canvas)
         dropped.paste(
             Image.composite(
-                Image.new("RGBA", (canvas, canvas), (26, 20, 70, 87)),
-                blank(canvas),
-                blurred,
+                Image.new("RGBA", (canvas, canvas), DEEP + (72,)), blank(canvas), blurred
             ),
-            (0, round(canvas * 0.028)),
+            (0, round(canvas * 0.024)),
         )
         base = Image.alpha_composite(base, dropped)
 
-    paper = Image.new("RGBA", (canvas, canvas))
-    paper.paste(vertical_gradient(canvas, PAPER_TOP, PAPER_BOTTOM), (0, 0))
-    paper.putalpha(255)
-    return Image.alpha_composite(base, Image.composite(paper, blank(canvas), punched))
+    base = Image.alpha_composite(base, paint(body, canvas))
+    # Lighter, so the hook reads as a second plane rather than a lump on the end
+    # of the first.
+    return Image.alpha_composite(base, paint(tail, canvas, alpha=158))
 
 
 def legacy(size):
     canvas = size * SS
+    tile = Image.new("RGBA", (canvas, canvas), (255, 255, 255, 255))
+    tile = draw_mark(tile, canvas)
     mask = Image.new("L", (canvas, canvas), 0)
     ImageDraw.Draw(mask).rounded_rectangle(
-        (0, 0, canvas - 1, canvas - 1),
-        radius=canvas * 0.28,  # same proportion as SelloraLogo
-        fill=255,
+        (0, 0, canvas - 1, canvas - 1), radius=canvas * 0.235, fill=255
     )
-    tile = Image.new("RGBA", (canvas, canvas), (0, 0, 0, 0))
-    tile.paste(diagonal_gradient(canvas), (0, 0))
-    tile = tile.convert("RGBA")
-
-    # The light, from the top left. Without it the tile is a flat swatch and the
-    # whole mark reads as clip art on a colour.
-    glow = Image.new("L", (canvas, canvas), 0)
-    ImageDraw.Draw(glow).ellipse(
-        (-canvas * 0.35, -canvas * 0.50, canvas * 0.80, canvas * 0.50), fill=78
-    )
-    glow = glow.filter(ImageFilter.GaussianBlur(canvas * 0.18))
-    tile = Image.alpha_composite(
-        tile,
-        Image.composite(
-            Image.new("RGBA", (canvas, canvas), (255, 255, 255, 255)),
-            blank(canvas),
-            glow,
-        ),
-    )
-
-    tile = draw_mark(tile, canvas)
-    tile.putalpha(Image.composite(mask, Image.new("L", (canvas, canvas), 0), mask))
+    tile.putalpha(mask)
     return tile.resize((size, size), Image.LANCZOS)
 
 
 def foreground(size):
     """The mark alone, inside the adaptive safe zone.
 
-    A launcher may crop the 108dp canvas to as little as 66dp, so anything
-    outside that centre circle can be shaved off. The mark is kept well within
-    it rather than filling the tile the way the legacy icon does.
+    A launcher may crop the 108dp canvas to as little as 66dp. No cast shadow:
+    the foreground is composited over a background it cannot see.
     """
     canvas = size * SS
-    # 0.72 keeps the whole mark inside the 66-of-108dp safe zone, so a launcher
-    # cropping to a circle cannot clip the torn edge. No cast shadow here: the
-    # foreground is composited over a background it cannot see.
-    img = draw_mark(blank(canvas), canvas, scale=0.72, shadow=False)
-    return img.resize((size, size), Image.LANCZOS)
+    return draw_mark(blank(canvas), canvas, scale=0.74, shadow=False).resize(
+        (size, size), Image.LANCZOS
+    )
 
 
 def write(path, image):
@@ -233,22 +201,15 @@ def main():
             foreground(size),
         )
 
-    def hexed(rgb):
-        return "#%02X%02X%02X" % rgb
-
     background = os.path.join(RES, "drawable", "ic_launcher_background.xml")
     os.makedirs(os.path.dirname(background), exist_ok=True)
     with open(background, "w", encoding="utf-8") as f:
         f.write(
             '<?xml version="1.0" encoding="utf-8"?>\n'
-            '<!-- Generated by tool/generate_launcher_icon.py. -->\n'
+            "<!-- Generated by tool/generate_launcher_icon.py. -->\n"
             '<shape xmlns:android="http://schemas.android.com/apk/res/android"\n'
             '    android:shape="rectangle">\n'
-            "    <gradient\n"
-            f'        android:startColor="{hexed(TOP)}"\n'
-            f'        android:endColor="{hexed(BOTTOM)}"\n'
-            '        android:angle="315"\n'
-            '        android:type="linear" />\n'
+            '    <solid android:color="#FFFFFF" />\n'
             "</shape>\n"
         )
     print("wrote", os.path.relpath(background, ROOT))
@@ -258,11 +219,10 @@ def main():
     with open(adaptive, "w", encoding="utf-8") as f:
         f.write(
             '<?xml version="1.0" encoding="utf-8"?>\n'
-            '<!-- Generated by tool/generate_launcher_icon.py. -->\n'
+            "<!-- Generated by tool/generate_launcher_icon.py. -->\n"
             '<adaptive-icon xmlns:android="http://schemas.android.com/apk/res/android">\n'
             '    <background android:drawable="@drawable/ic_launcher_background" />\n'
             '    <foreground android:drawable="@mipmap/ic_launcher_foreground" />\n'
-            '    <monochrome android:drawable="@mipmap/ic_launcher_foreground" />\n'
             "</adaptive-icon>\n"
         )
     print("wrote", os.path.relpath(adaptive, ROOT))

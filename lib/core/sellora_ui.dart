@@ -34,187 +34,175 @@ class SelloraWordmark extends StatelessWidget {
   }
 }
 
-/// The Sellora mark: a sales slip, tipped slightly, on a lit tile.
+/// The Sellora mark: a drawn swoosh, rising.
 ///
-/// The idea it turns on is that the slip's ruled lines get **longer as they go
-/// down**. At a glance they are the lines of a receipt; a moment later they are
-/// a chart going up. Recorded sales becoming something you can read is what the
-/// app is for, so the mark says it in one shape rather than borrowing a stock
-/// bar-chart glyph.
+/// Not assembled from rounded rectangles and circles like everything that came
+/// before it — this is a cubic bezier spine swept with a **varying width**, so
+/// the stroke is full where the curve turns and lifts away to nothing at the
+/// tip. That swell and taper is most of what separates a drawn mark from a
+/// thick line, and it cannot be had from a primitive.
 ///
-/// The rest is what separates a mark from a glyph dropped on a plate: the tile
-/// is lit from the top left rather than flat, the slip casts a real shadow onto
-/// it, the paper carries a faint gradient instead of being pure white, and the
-/// whole thing is tipped eight degrees. The tilt is doing more work than it
-/// looks — perfect symmetry is most of what makes a small mark read as
-/// generated rather than drawn.
+/// The hook at the top is a second, lighter stroke crossing behind the first.
+/// It reads as the same gesture continuing, and gives the mark a layer.
 ///
-/// The lines are **cut** from the slip, so the tile's gradient shows through
-/// them. Negative space keeps the mark from closing into a smudge at 48px, and
-/// the lines can never be the wrong colour against the paper.
-///
-/// Colours come off the live accent, so rebranding the app rebrands the mark.
-/// `tool/generate_launcher_icon.py` draws the same geometry from the same
-/// fractions for the launcher icon.
+/// No plate in the app: the canvas here is already near-white, so a white tile
+/// under the mark would be an invisible rectangle. The launcher icon does carry
+/// one, because an icon needs a ground — `tool/generate_launcher_icon.py` draws
+/// this same spine from the same control points.
 class SelloraLogo extends StatelessWidget {
   const SelloraLogo({super.key, this.size = 40, this.shadow = true});
 
   final double size;
 
-  /// The tile's own drop shadow. Off in dense places — an app bar row does not
-  /// need the lift. The slip's shadow onto the tile is always drawn.
+  /// A soft cast under the mark. Off in dense places.
   final bool shadow;
 
   @override
   Widget build(BuildContext context) {
     final t = context.t;
     final base = HSLColor.fromColor(t.accent);
-    final lit = base
-        .withLightness((base.lightness + 0.13).clamp(0.0, 1.0))
-        .withSaturation((base.saturation - 0.04).clamp(0.0, 1.0))
+    final light = base
+        .withLightness((base.lightness + 0.16).clamp(0.0, 1.0))
         .toColor();
     final deep =
-        base.withLightness((base.lightness - 0.19).clamp(0.0, 1.0)).toColor();
+        base.withLightness((base.lightness - 0.14).clamp(0.0, 1.0)).toColor();
 
-    return Container(
+    return SizedBox(
       width: size,
       height: size,
-      decoration: BoxDecoration(
-        // 28% of the side is the squircle proportion Android and iOS both
-        // settled on; anything rounder reads as a button, anything squarer as
-        // a placeholder.
-        borderRadius: BorderRadius.circular(size * 0.28),
-        gradient: LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: [lit, deep],
-        ),
-        boxShadow: shadow
-            ? [
-                BoxShadow(
-                  color: t.accent.withValues(alpha: 0.28),
-                  blurRadius: size * 0.30,
-                  offset: Offset(0, size * 0.10),
-                ),
-              ]
-            : null,
-      ),
-      child: DecoratedBox(
-        // The light. Without it the tile is a flat swatch and the whole mark
-        // reads as clip art on a colour.
-        decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(size * 0.28),
-          gradient: RadialGradient(
-            center: const Alignment(-0.55, -0.75),
-            radius: 1.15,
-            colors: [
-              Colors.white.withValues(alpha: 0.26),
-              Colors.white.withValues(alpha: 0.0),
-            ],
-          ),
-        ),
-        child: CustomPaint(
-          painter: _SlipMarkPainter(onAccent: t.onAccent),
-          size: Size.square(size),
-        ),
+      child: CustomPaint(
+        painter: _SwooshPainter(light: light, deep: deep, shadow: shadow),
       ),
     );
   }
 }
 
-/// The slip, in fractions of the tile so every size draws the same shape.
-class _SlipMarkPainter extends CustomPainter {
-  const _SlipMarkPainter({required this.onAccent});
+/// The swoosh, in fractions of its box so every size draws the same curve.
+class _SwooshPainter extends CustomPainter {
+  const _SwooshPainter({
+    required this.light,
+    required this.deep,
+    required this.shadow,
+  });
 
-  final Color onAccent;
+  final Color light;
+  final Color deep;
+  final bool shadow;
 
-  static const _left = 0.31;
-  static const _right = 0.69;
-  static const _top = 0.19;
-  static const _bodyBottom = 0.655;
+  /// Spine of the main stroke: bottom left, through the turn, up to the right.
+  static const _body = [
+    Offset(0.145, 0.760),
+    Offset(0.345, 0.760),
+    Offset(0.420, 0.285),
+    Offset(0.700, 0.208),
+  ];
 
-  /// How far the torn points hang below the body.
-  static const _tip = 0.745;
-  static const _corner = 0.05;
-  static const _teeth = 4;
+  /// The hook that comes back over the top.
+  static const _tail = [
+    Offset(0.645, 0.230),
+    Offset(0.780, 0.192),
+    Offset(0.822, 0.320),
+    Offset(0.752, 0.430),
+  ];
 
-  /// The whole slip is tipped by this much, about the tile's centre.
-  static const _tiltDegrees = -8.0;
-
-  // Ruled lines: same left edge, growing right. This is the mark's one idea.
-  static const _lineLeft = 0.385;
-  static const _lineTops = [0.295, 0.405, 0.515];
-  static const _lineWidths = [0.110, 0.165, 0.230];
-  static const _lineHeight = 0.055;
+  static const _bodyWidth = 0.205;
+  static const _tailWidth = 0.090;
 
   @override
   void paint(Canvas canvas, Size size) {
     final s = size.shortestSide;
-    double x(double f) => f * s;
 
-    final slip = Path()
-      ..moveTo(x(_left), x(_top + _corner))
-      ..quadraticBezierTo(x(_left), x(_top), x(_left + _corner), x(_top))
-      ..lineTo(x(_right - _corner), x(_top))
-      ..quadraticBezierTo(x(_right), x(_top), x(_right), x(_top + _corner))
-      ..lineTo(x(_right), x(_bodyBottom));
+    // Full at the start, lifting away to a point — a brush leaving the paper.
+    final body = _sweep(_body, s, (t) => _bodyWidth * (1 - 0.84 * t));
+    // Fat in the middle, nothing at either end.
+    final tail = _sweep(
+      _tail,
+      s,
+      (t) => _tailWidth * (0.05 + 0.95 * math.pow(math.sin(math.pi * t), 0.7)),
+    );
 
-    // Torn edge, walked right to left so the path closes up the left side.
-    const span = _right - _left;
-    for (var i = 0; i < _teeth; i++) {
-      slip
-        ..lineTo(x(_right - span * (i * 2 + 1) / (_teeth * 2)), x(_tip))
-        ..lineTo(x(_right - span * (i * 2 + 2) / (_teeth * 2)), x(_bodyBottom));
-    }
-    slip.close();
-
-    final lines = Path();
-    for (var i = 0; i < _lineTops.length; i++) {
-      lines.addRRect(
-        RRect.fromLTRBR(
-          x(_lineLeft),
-          x(_lineTops[i]),
-          x(_lineLeft + _lineWidths[i]),
-          x(_lineTops[i] + _lineHeight),
-          Radius.circular(x(_lineHeight / 2)),
-        ),
+    if (shadow) {
+      canvas.drawPath(
+        body.shift(Offset(0, s * 0.024)),
+        Paint()
+          ..color = deep.withValues(alpha: 0.28)
+          ..maskFilter = MaskFilter.blur(BlurStyle.normal, s * 0.038),
       );
     }
 
-    canvas.save();
-    canvas.translate(s / 2, s / 2);
-    canvas.rotate(_tiltDegrees * math.pi / 180);
-    canvas.translate(-s / 2, -s / 2);
-
-    // The slip's shadow onto the tile, from the silhouette rather than from the
-    // punched shape — light does not fall through the ruled lines.
+    final rect = Rect.fromLTWH(0, 0, s, s);
     canvas.drawPath(
-      slip.shift(Offset(0, s * 0.028)),
-      Paint()
-        ..color = const Color(0xFF1A1446).withValues(alpha: 0.34)
-        ..maskFilter = MaskFilter.blur(BlurStyle.normal, s * 0.045),
-    );
-
-    // Paper, faintly tinted down the sheet. Pure white is the flattest thing a
-    // mark can be made of.
-    final bounds = Rect.fromLTRB(x(_left), x(_top), x(_right), x(_tip));
-    canvas.drawPath(
-      Path.combine(PathOperation.difference, slip, lines),
+      body,
       Paint()
         ..isAntiAlias = true
         ..shader = LinearGradient(
-          begin: Alignment.topCenter,
-          end: Alignment.bottomCenter,
-          colors: [onAccent, Color.alphaBlend(
-              const Color(0x1F4F46E5), onAccent)],
-        ).createShader(bounds),
+          begin: Alignment.topRight,
+          end: Alignment.bottomLeft,
+          colors: [light, deep],
+        ).createShader(rect),
     );
 
-    canvas.restore();
+    // Behind-and-lighter, so the hook reads as a second plane rather than a
+    // lump on the end of the first.
+    canvas.drawPath(
+      tail,
+      Paint()
+        ..isAntiAlias = true
+        ..shader = LinearGradient(
+          begin: Alignment.topRight,
+          end: Alignment.bottomLeft,
+          colors: [
+            light.withValues(alpha: 0.62),
+            deep.withValues(alpha: 0.62),
+          ],
+        ).createShader(rect),
+    );
+  }
+
+  /// Sweeps a spine into a closed outline by offsetting it either side.
+  ///
+  /// The normal is taken from the neighbouring samples rather than from the
+  /// curve's derivative: cheaper, and indistinguishable at this density.
+  Path _sweep(List<Offset> control, double s, double Function(double) widthAt) {
+    const steps = 96;
+    final spine = <Offset>[];
+    for (var i = 0; i <= steps; i++) {
+      final t = i / steps;
+      final u = 1 - t;
+      spine.add(
+        control[0] * (u * u * u) +
+            control[1] * (3 * u * u * t) +
+            control[2] * (3 * u * t * t) +
+            control[3] * (t * t * t),
+      );
+    }
+
+    final left = <Offset>[];
+    final right = <Offset>[];
+    for (var i = 0; i < spine.length; i++) {
+      final previous = spine[math.max(0, i - 1)];
+      final next = spine[math.min(spine.length - 1, i + 1)];
+      final d = next - previous;
+      final length = d.distance == 0 ? 1e-6 : d.distance;
+      final normal = Offset(-d.dy / length, d.dx / length);
+      final half = widthAt(i / (spine.length - 1)) / 2;
+      left.add((spine[i] + normal * half) * s);
+      right.add((spine[i] - normal * half) * s);
+    }
+
+    final path = Path()..moveTo(left.first.dx, left.first.dy);
+    for (final p in left.skip(1)) {
+      path.lineTo(p.dx, p.dy);
+    }
+    for (final p in right.reversed) {
+      path.lineTo(p.dx, p.dy);
+    }
+    return path..close();
   }
 
   @override
-  bool shouldRepaint(_SlipMarkPainter old) => old.onAccent != onAccent;
+  bool shouldRepaint(_SwooshPainter old) =>
+      old.light != light || old.deep != deep || old.shadow != shadow;
 }
 
 /// Mark and wordmark together, for headers and the logged-out screens.
@@ -230,8 +218,12 @@ class SelloraLockup extends StatelessWidget {
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: [
-        SelloraLogo(size: size * 1.32, shadow: shadow),
-        SizedBox(width: size * 0.40),
+        // Larger than it looks like it needs to be. The curve only occupies the
+        // middle two-thirds of its box, and a swept stroke thins to almost
+        // nothing at the tip, so matched box-for-box against the wordmark it
+        // reads as a faint squiggle beside heavy type.
+        SelloraLogo(size: size * 1.70, shadow: shadow),
+        SizedBox(width: size * 0.26),
         SelloraWordmark(size: size),
       ],
     );
