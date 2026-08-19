@@ -91,7 +91,10 @@ class RecoveryCodeScreen extends ConsumerWidget {
           ),
           Gap.h16,
           FilledButton(
-            onPressed: () => context.go('/'),
+            // Two ways in, two ways out. From settings this was pushed, so
+            // popping returns where the owner was; straight after signing up
+            // there is nothing to pop back to and the app is what comes next.
+            onPressed: () => context.canPop() ? context.pop() : context.go('/'),
             child: const Text('I have written it down'),
           ),
         ],

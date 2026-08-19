@@ -111,7 +111,13 @@ class AuthController extends StateNotifier<AuthState> {
     state = AuthState(userId: id);
   }
 
-  Future<void> register({
+  /// Creates a local account and returns its recovery code, to be shown once.
+  ///
+  /// The code is issued here rather than left to a screen so that every account
+  /// has one by construction. Made optional, the people who would go looking
+  /// for it in settings are exactly the people who never needed it — and the
+  /// ones who forget a password are the ones who never went.
+  Future<String> register({
     required String name,
     required String username,
     required String password,
@@ -155,6 +161,8 @@ class AuthController extends StateNotifier<AuthState> {
 
     await _prefs.setString(_prefActiveUserId, id);
     state = AuthState(userId: id);
+
+    return _issueRecoveryCode(id);
   }
 
   /// Signs in the account a backup just restored, without asking for the

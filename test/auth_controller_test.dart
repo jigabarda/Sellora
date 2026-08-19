@@ -153,6 +153,67 @@ void main() {
     });
   });
 
+  group('every new account gets a recovery code', () {
+    test('registering issues one without being asked', () async {
+      // The setUp above registered @owner. If a code only appeared when
+      // somebody went looking in settings, the people who forget a password
+      // would be exactly the people who never went.
+      expect(await auth.hasRecoveryCode('owner'), isTrue);
+    });
+
+    test('the code register hands back is the one that works', () async {
+      final code = await auth.register(
+        name: 'Second Owner',
+        username: 'second',
+        password: 'secret123',
+      );
+
+      expect(code, matches(RegExp(r'^[0-9A-Z]{4}-[0-9A-Z]{4}-[0-9A-Z]{4}$')));
+
+      await auth.resetPasswordWithRecoveryCode(
+        username: 'second',
+        code: code,
+        newPassword: 'brandnew456',
+      );
+      await auth.logout();
+      await auth.login(username: 'second', password: 'brandnew456');
+      expect(auth.isLoggedIn, isTrue);
+    });
+
+    test('two accounts do not share a code', () async {
+      final first = await auth.createRecoveryCode(password: 'secret123');
+      final second = await auth.register(
+        name: 'Second Owner',
+        username: 'second',
+        password: 'secret123',
+      );
+
+      expect(first, isNot(second));
+      // And one account's code is no use against the other.
+      await expectLater(
+        auth.resetPasswordWithRecoveryCode(
+          username: 'second',
+          code: first,
+          newPassword: 'brandnew456',
+        ),
+        throwsA(isA<AuthException>()),
+      );
+    });
+
+    test('a registered account is still signed in afterwards', () async {
+      // Issuing the code must not disturb the session registering just set up.
+      await auth.logout();
+      await auth.register(
+        name: 'Third Owner',
+        username: 'third',
+        password: 'secret123',
+      );
+
+      expect(auth.isLoggedIn, isTrue);
+      expect((await auth.currentUser())!.username, 'third');
+    });
+  });
+
   group('password stretching', () {
     /// Writes a credential in the pre-stretching format: sha256(salt+secret).
     /// This is what every account made before this change actually holds, and
@@ -403,8 +464,16 @@ void main() {
 
     test('an account with no code says so rather than failing vaguely',
         () async {
-      // Every account predating this feature is in exactly this state, so the
-      // message has to point somewhere useful.
+      // Registering issues a code now, so the state has to be arranged: this
+      // is every account made before recovery codes existed, and the message
+      // has to point those people somewhere useful.
+      await db.update(
+        'users',
+        {'recovery_salt': null, 'recovery_hash': null},
+        where: 'username = ?',
+        whereArgs: ['owner'],
+      );
+
       await expectLater(
         auth.resetPasswordWithRecoveryCode(
           username: 'owner',
@@ -422,11 +491,25 @@ void main() {
     test('making a code needs the current password', () async {
       // Otherwise anyone holding an unlocked phone could walk off with a key
       // to it and lock the owner out later.
+      final issuedAtRegistration = await auth.createRecoveryCode(
+        password: 'secret123',
+      );
+
       await expectLater(
         auth.createRecoveryCode(password: 'wrongpassword'),
         throwsA(isA<AuthException>()),
       );
-      expect(await auth.hasRecoveryCode('owner'), isFalse);
+
+      // The refusal must not have rotated the code either — losing the one
+      // that is written down would be its own way of locking someone out.
+      await auth.resetPasswordWithRecoveryCode(
+        username: 'owner',
+        code: issuedAtRegistration,
+        newPassword: 'brandnew456',
+      );
+      await auth.logout();
+      await auth.login(username: 'owner', password: 'brandnew456');
+      expect(auth.isLoggedIn, isTrue);
     });
 
     test('making a new code retires the old one', () async {
@@ -444,11 +527,19 @@ void main() {
     });
 
     test('hasRecoveryCode reports what the account actually has', () async {
-      expect(await auth.hasRecoveryCode('owner'), isFalse);
-      await auth.createRecoveryCode(password: 'secret123');
       expect(await auth.hasRecoveryCode('  OWNER '), isTrue,
-          reason: 'the username is normalised like everywhere else');
+          reason: 'registering issues one, and the username is normalised '
+              'here like everywhere else');
       expect(await auth.hasRecoveryCode('nobody'), isFalse);
+
+      // And it reads false for an account predating recovery codes.
+      await db.update(
+        'users',
+        {'recovery_salt': null, 'recovery_hash': null},
+        where: 'username = ?',
+        whereArgs: ['owner'],
+      );
+      expect(await auth.hasRecoveryCode('owner'), isFalse);
     });
 
     test('the code is never readable back out of the database', () async {
