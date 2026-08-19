@@ -67,7 +67,7 @@ class MainActivity : FlutterActivity() {
                 put(MediaStore.Downloads.DISPLAY_NAME, fileName)
                 put(MediaStore.Downloads.MIME_TYPE, mimeType)
                 // Marked pending until the bytes are all there, so nothing else
-                // on the device can open a half-written spreadsheet.
+                // on the device can open a half-written file.
                 put(MediaStore.Downloads.IS_PENDING, 1)
             }
 
@@ -99,6 +99,8 @@ class MainActivity : FlutterActivity() {
             // Read the name back rather than echoing what we asked for:
             // MediaStore renames a clash to "report (1).xlsx", and telling the
             // owner a name that is not on their device is worse than useless.
+            // The same channel now carries spreadsheets and backups, so it
+            // stays generic about what it is writing.
             val saved = resolver.query(
                 uri,
                 arrayOf(MediaStore.Downloads.DISPLAY_NAME),

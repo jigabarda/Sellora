@@ -4,15 +4,23 @@ import 'dart:io';
 import 'package:path_provider/path_provider.dart';
 import 'package:sqflite/sqflite.dart';
 
+import '../db/sellora_database.dart';
+
 /// Marker written into every backup file so we can reject foreign JSON.
 const _formatTag = 'sellora-backup';
 
 /// Bumped when the backup envelope itself changes shape.
 const backupFormatVersion = 1;
 
-/// Must track `SelloraDatabase._version`. A backup taken on a newer schema
-/// cannot be restored into an older build.
-const backupSchemaVersion = 4;
+/// The schema a backup was taken on, so a build can refuse a file from a
+/// newer one rather than failing halfway through the insert.
+///
+/// Derived rather than copied. It was a hand-kept `4` while the database had
+/// moved to 8, which meant every export understated itself by four versions
+/// and an older build would accept a file full of columns it did not have —
+/// surfacing as a raw SQLite error mid-restore instead of "update the app
+/// first".
+const backupSchemaVersion = SelloraDatabase.schemaVersion;
 
 /// Parent-before-child. Restore inserts in this order so foreign keys hold.
 const _insertOrder = <String>[
