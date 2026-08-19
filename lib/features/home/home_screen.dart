@@ -17,7 +17,7 @@ class HomeScreen extends ConsumerWidget {
     return Scaffold(
       appBar: AppBar(
         titleSpacing: Gap.lg,
-        title: const SelloraWordmark(),
+        title: const SelloraLockup(size: 20, shadow: false),
         actions: [
           IconButton(
             tooltip: 'Backup & restore',

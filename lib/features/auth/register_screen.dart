@@ -52,7 +52,7 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
                   mainAxisSize: MainAxisSize.min,
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
-                    const SelloraWordmark(size: 26),
+                    const SelloraLockup(size: 24),
                     Gap.h24,
                     Text('Create your account',
                         style: context.text.headlineMedium),
@@ -86,8 +86,6 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
                       decoration: const InputDecoration(
                         labelText: 'Username',
                         prefixText: '@',
-                        helperText:
-                            'How you sign in. Letters, numbers, . and _',
                       ),
                       // Defers to the controller's own rule rather than
                       // restating it, so the form and the database can never
@@ -109,7 +107,6 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
                       textInputAction: TextInputAction.next,
                       decoration: InputDecoration(
                         labelText: 'Password',
-                        helperText: 'At least 6 characters',
                         suffixIcon: IconButton(
                           icon: Icon(
                             _obscure

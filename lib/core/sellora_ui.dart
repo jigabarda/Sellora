@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
@@ -28,6 +30,202 @@ class SelloraWordmark extends StatelessWidget {
         height: 1.1,
         color: color ?? context.t.ink,
       ),
+    );
+  }
+}
+
+/// The Sellora mark: a drawn swoosh, rising.
+///
+/// Not assembled from rounded rectangles and circles like everything that came
+/// before it — this is a cubic bezier spine swept with a **varying width**, so
+/// the stroke is full where the curve turns and lifts away to nothing at the
+/// tip. That swell and taper is most of what separates a drawn mark from a
+/// thick line, and it cannot be had from a primitive.
+///
+/// The hook at the top is a second, lighter stroke crossing behind the first.
+/// It reads as the same gesture continuing, and gives the mark a layer.
+///
+/// No plate in the app: the canvas here is already near-white, so a white tile
+/// under the mark would be an invisible rectangle. The launcher icon does carry
+/// one, because an icon needs a ground — `tool/generate_launcher_icon.py` draws
+/// this same spine from the same control points.
+class SelloraLogo extends StatelessWidget {
+  const SelloraLogo({super.key, this.size = 40, this.shadow = true});
+
+  final double size;
+
+  /// A soft cast under the mark. Off in dense places.
+  final bool shadow;
+
+  @override
+  Widget build(BuildContext context) {
+    final t = context.t;
+    final base = HSLColor.fromColor(t.accent);
+    final light = base
+        .withLightness((base.lightness + 0.16).clamp(0.0, 1.0))
+        .toColor();
+    final deep =
+        base.withLightness((base.lightness - 0.14).clamp(0.0, 1.0)).toColor();
+
+    return SizedBox(
+      width: size,
+      height: size,
+      child: CustomPaint(
+        painter: _SwooshPainter(light: light, deep: deep, shadow: shadow),
+      ),
+    );
+  }
+}
+
+/// The swoosh, in fractions of its box so every size draws the same curve.
+class _SwooshPainter extends CustomPainter {
+  const _SwooshPainter({
+    required this.light,
+    required this.deep,
+    required this.shadow,
+  });
+
+  final Color light;
+  final Color deep;
+  final bool shadow;
+
+  /// Spine of the main stroke: bottom left, through the turn, up to the right.
+  static const _body = [
+    Offset(0.145, 0.760),
+    Offset(0.345, 0.760),
+    Offset(0.420, 0.285),
+    Offset(0.700, 0.208),
+  ];
+
+  /// The hook that comes back over the top.
+  static const _tail = [
+    Offset(0.645, 0.230),
+    Offset(0.780, 0.192),
+    Offset(0.822, 0.320),
+    Offset(0.752, 0.430),
+  ];
+
+  static const _bodyWidth = 0.205;
+  static const _tailWidth = 0.090;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final s = size.shortestSide;
+
+    // Full at the start, lifting away to a point — a brush leaving the paper.
+    final body = _sweep(_body, s, (t) => _bodyWidth * (1 - 0.84 * t));
+    // Fat in the middle, nothing at either end.
+    final tail = _sweep(
+      _tail,
+      s,
+      (t) => _tailWidth * (0.05 + 0.95 * math.pow(math.sin(math.pi * t), 0.7)),
+    );
+
+    if (shadow) {
+      canvas.drawPath(
+        body.shift(Offset(0, s * 0.024)),
+        Paint()
+          ..color = deep.withValues(alpha: 0.28)
+          ..maskFilter = MaskFilter.blur(BlurStyle.normal, s * 0.038),
+      );
+    }
+
+    final rect = Rect.fromLTWH(0, 0, s, s);
+    canvas.drawPath(
+      body,
+      Paint()
+        ..isAntiAlias = true
+        ..shader = LinearGradient(
+          begin: Alignment.topRight,
+          end: Alignment.bottomLeft,
+          colors: [light, deep],
+        ).createShader(rect),
+    );
+
+    // Behind-and-lighter, so the hook reads as a second plane rather than a
+    // lump on the end of the first.
+    canvas.drawPath(
+      tail,
+      Paint()
+        ..isAntiAlias = true
+        ..shader = LinearGradient(
+          begin: Alignment.topRight,
+          end: Alignment.bottomLeft,
+          colors: [
+            light.withValues(alpha: 0.62),
+            deep.withValues(alpha: 0.62),
+          ],
+        ).createShader(rect),
+    );
+  }
+
+  /// Sweeps a spine into a closed outline by offsetting it either side.
+  ///
+  /// The normal is taken from the neighbouring samples rather than from the
+  /// curve's derivative: cheaper, and indistinguishable at this density.
+  Path _sweep(List<Offset> control, double s, double Function(double) widthAt) {
+    const steps = 96;
+    final spine = <Offset>[];
+    for (var i = 0; i <= steps; i++) {
+      final t = i / steps;
+      final u = 1 - t;
+      spine.add(
+        control[0] * (u * u * u) +
+            control[1] * (3 * u * u * t) +
+            control[2] * (3 * u * t * t) +
+            control[3] * (t * t * t),
+      );
+    }
+
+    final left = <Offset>[];
+    final right = <Offset>[];
+    for (var i = 0; i < spine.length; i++) {
+      final previous = spine[math.max(0, i - 1)];
+      final next = spine[math.min(spine.length - 1, i + 1)];
+      final d = next - previous;
+      final length = d.distance == 0 ? 1e-6 : d.distance;
+      final normal = Offset(-d.dy / length, d.dx / length);
+      final half = widthAt(i / (spine.length - 1)) / 2;
+      left.add((spine[i] + normal * half) * s);
+      right.add((spine[i] - normal * half) * s);
+    }
+
+    final path = Path()..moveTo(left.first.dx, left.first.dy);
+    for (final p in left.skip(1)) {
+      path.lineTo(p.dx, p.dy);
+    }
+    for (final p in right.reversed) {
+      path.lineTo(p.dx, p.dy);
+    }
+    return path..close();
+  }
+
+  @override
+  bool shouldRepaint(_SwooshPainter old) =>
+      old.light != light || old.deep != deep || old.shadow != shadow;
+}
+
+/// Mark and wordmark together, for headers and the logged-out screens.
+class SelloraLockup extends StatelessWidget {
+  const SelloraLockup({super.key, this.size = 22, this.shadow = true});
+
+  /// Wordmark size; the mark is scaled from it so the pair always sits right.
+  final double size;
+  final bool shadow;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        // Larger than it looks like it needs to be. The curve only occupies the
+        // middle two-thirds of its box, and a swept stroke thins to almost
+        // nothing at the tip, so matched box-for-box against the wordmark it
+        // reads as a faint squiggle beside heavy type.
+        SelloraLogo(size: size * 1.70, shadow: shadow),
+        SizedBox(width: size * 0.26),
+        SelloraWordmark(size: size),
+      ],
     );
   }
 }
