@@ -32,14 +32,22 @@ class SelloraWordmark extends StatelessWidget {
   }
 }
 
-/// The Sellora mark: a gradient squircle carrying an S.
+/// The Sellora mark: a receipt, cut out of a gradient squircle.
 ///
-/// The letterform is the brand typeface's own S rather than a hand-built path,
-/// so the mark and the wordmark beside it are cut from the same shapes. A
-/// bespoke curve would drift away from the type the moment either changed.
+/// A letter in a box is what every app ships on day one, and it says nothing.
+/// A receipt says what this app is for — a record of what was sold — and the
+/// torn bottom edge gives it a silhouette you can pick out of a grid of round
+/// icons, which is most of what a small mark has to do.
+///
+/// The ruled lines are **cut** from the shape rather than painted over it, so
+/// the gradient shows through them. Negative space is what keeps a mark this
+/// small from turning into a smudge, and it means the lines can never be the
+/// wrong colour against the tile.
 ///
 /// Both gradient stops are derived from the live accent, so a user who rebrands
 /// the app gets a mark in their own colour instead of a stale purple tile.
+/// `tool/generate_launcher_icon.py` draws the same geometry for the launcher
+/// icon, from the same fractions.
 class SelloraLogo extends StatelessWidget {
   const SelloraLogo({super.key, this.size = 40, this.shadow = true});
 
@@ -82,24 +90,84 @@ class SelloraLogo extends StatelessWidget {
               ]
             : null,
       ),
-      alignment: Alignment.center,
-      child: Transform.translate(
-        // The S sits a hair high in its em box. Optical centring, not metric.
-        offset: Offset(0, -size * 0.015),
-        child: Text(
-          'S',
-          style: TextStyle(
-            fontFamily: kBrandFontFamily,
-            fontSize: size * 0.58,
-            fontWeight: FontWeight.w800,
-            letterSpacing: 0,
-            height: 1.0,
-            color: t.onAccent,
-          ),
-        ),
+      child: CustomPaint(
+        painter: _ReceiptMarkPainter(t.onAccent),
+        size: Size.square(size),
       ),
     );
   }
+}
+
+/// The receipt, in fractions of the tile so every size draws the same shape.
+class _ReceiptMarkPainter extends CustomPainter {
+  const _ReceiptMarkPainter(this.color);
+
+  final Color color;
+
+  // Body of the receipt.
+  static const _left = 0.29;
+  static const _right = 0.71;
+  static const _top = 0.215;
+  static const _bodyBottom = 0.665;
+
+  /// How far the torn points hang below the body.
+  static const _tip = 0.755;
+  static const _corner = 0.055;
+  static const _teeth = 4;
+
+  // Ruled lines, inset from the body edges.
+  static const _lineLeft = 0.365;
+  static const _lineRight = 0.635;
+  static const _shortRight = 0.545;
+  static const _lineHeight = 0.058;
+  static const _lineTops = [0.305, 0.415, 0.525];
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final s = size.shortestSide;
+    double x(double f) => f * s;
+
+    final body = Path()
+      ..moveTo(x(_left), x(_top + _corner))
+      ..quadraticBezierTo(x(_left), x(_top), x(_left + _corner), x(_top))
+      ..lineTo(x(_right - _corner), x(_top))
+      ..quadraticBezierTo(x(_right), x(_top), x(_right), x(_top + _corner))
+      ..lineTo(x(_right), x(_bodyBottom));
+
+    // Torn edge, walked right to left so the path closes up the left side.
+    const span = _right - _left;
+    for (var i = 0; i < _teeth; i++) {
+      body
+        ..lineTo(x(_right - span * (i * 2 + 1) / (_teeth * 2)), x(_tip))
+        ..lineTo(x(_right - span * (i * 2 + 2) / (_teeth * 2)), x(_bodyBottom));
+    }
+    body.close();
+
+    final lines = Path();
+    for (var i = 0; i < _lineTops.length; i++) {
+      // The last line is short, the way the last line of a receipt is.
+      final right = i == _lineTops.length - 1 ? _shortRight : _lineRight;
+      lines.addRRect(
+        RRect.fromLTRBR(
+          x(_lineLeft),
+          x(_lineTops[i]),
+          x(right),
+          x(_lineTops[i] + _lineHeight),
+          Radius.circular(x(_lineHeight / 2)),
+        ),
+      );
+    }
+
+    canvas.drawPath(
+      Path.combine(PathOperation.difference, body, lines),
+      Paint()
+        ..color = color
+        ..isAntiAlias = true,
+    );
+  }
+
+  @override
+  bool shouldRepaint(_ReceiptMarkPainter old) => old.color != color;
 }
 
 /// Mark and wordmark together, for headers and the logged-out screens.

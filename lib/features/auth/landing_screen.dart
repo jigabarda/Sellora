@@ -230,28 +230,23 @@ class _Slide extends StatelessWidget {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: Gap.xl),
       child: Column(
+        // The artwork and the words are one block, centred together. Pinning
+        // the block to either end just moves the leftover height from one side
+        // to the other and makes it look like a mistake; split evenly it reads
+        // as margin. The artwork also takes the full width it is offered, so
+        // there is less height left over to distribute in the first place.
+        mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          // Expanded, not Flexible-and-centre: the artwork should take all the
-          // room left over and let the words sit directly beneath it. Centring
-          // the pair left a band of dead space between the paragraph and the
-          // dots, which read as a layout that had run out of things to say.
-          Expanded(
-            // Bottom-aligned rather than centred: the artwork belongs directly
-            // above the words it illustrates, and any space the screen has to
-            // spare should collect under the header instead of wedging itself
-            // between the picture and the headline.
-            child: Align(
-              alignment: Alignment.bottomCenter,
-              child: Opacity(
+          Flexible(
+            child: Opacity(
               opacity: 0.30 + 0.70 * settle,
-                child: Transform.translate(
-                  // Cards drift in from the side a little slower than the
-                  // page, which reads as depth rather than as a slideshow.
-                  offset: Offset(offset * 26, 0),
-                  child: Transform.scale(
-                    scale: 0.90 + 0.10 * settle,
-                    child: slide.artwork,
-                  ),
+              child: Transform.translate(
+                // Cards drift in from the side a little slower than the page,
+                // which reads as depth rather than as a slideshow.
+                offset: Offset(offset * 26, 0),
+                child: Transform.scale(
+                  scale: 0.90 + 0.10 * settle,
+                  child: slide.artwork,
                 ),
               ),
             ),
@@ -298,12 +293,21 @@ class _Artboard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return FittedBox(
-      fit: BoxFit.scaleDown,
-      child: SizedBox(
-        width: _boardWidth,
-        height: _boardHeight,
-        child: Stack(clipBehavior: Clip.none, children: children),
+    // The height follows the width rather than the space on offer. A bare
+    // FittedBox with `contain` swells to fill whatever box it is handed, which
+    // is why the artwork kept ending up pinned to one end of a tall gap: it was
+    // not the alignment that was wrong, it was that the picture claimed height
+    // it had no use for. Bound to the board's own ratio it takes exactly what
+    // it needs, and the column can then centre the whole block honestly.
+    return AspectRatio(
+      aspectRatio: _boardWidth / _boardHeight,
+      child: FittedBox(
+        fit: BoxFit.contain,
+        child: SizedBox(
+          width: _boardWidth,
+          height: _boardHeight,
+          child: Stack(clipBehavior: Clip.none, children: children),
+        ),
       ),
     );
   }
