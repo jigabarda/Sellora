@@ -7,7 +7,7 @@ class SelloraDatabase {
   SelloraDatabase._();
 
   static const _fileName = 'sellora.db';
-  static const _version = 6;
+  static const _version = 7;
 
   static Future<Database> open() async {
     final dir = await getApplicationDocumentsDirectory();
@@ -91,6 +91,11 @@ class SelloraDatabase {
       await _addColumn(db, 'sale_lines', 'days', 'INTEGER NOT NULL DEFAULT 1');
       await _addColumn(
           db, 'sale_lines', 'returned_qty', 'INTEGER NOT NULL DEFAULT 0');
+    }
+    // Discounts. Zero is right for every sale already recorded — none of them
+    // had one — so no backfill is needed beyond the default.
+    if (oldVersion < 7) {
+      await _addColumn(db, 'sales', 'discount', 'REAL NOT NULL DEFAULT 0');
     }
   }
 
@@ -282,7 +287,15 @@ CREATE TABLE sales (
   id TEXT NOT NULL PRIMARY KEY,
   business_id TEXT NOT NULL,
   customer_id TEXT,
+  -- What the customer actually paid. Every report and every dashboard total
+  -- reads this column, so it stays the net figure and a discount never has to
+  -- be remembered about downstream.
   total REAL NOT NULL,
+  -- How much was taken off, kept so a receipt can show the arithmetic. Stored
+  -- in pesos even when it was entered as a percentage: a stored percentage is
+  -- ambiguous the moment prices change, and a peso amount is what was
+  -- actually given up.
+  discount REAL NOT NULL DEFAULT 0,
   created_at INTEGER NOT NULL,
   FOREIGN KEY (business_id) REFERENCES businesses(id) ON DELETE CASCADE,
   FOREIGN KEY (customer_id) REFERENCES customers(id) ON DELETE SET NULL

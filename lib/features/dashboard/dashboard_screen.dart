@@ -340,7 +340,9 @@ class _ProductPerformanceCard extends StatelessWidget {
         map[line.name] = _PerformanceRow(
           line.name,
           current.quantity + line.qty,
-          current.revenue + (line.qty * line.unitPrice),
+          // `line.total` rather than qty * price: it carries the rental
+          // days, which are 1 for anything sold outright.
+          current.revenue + line.total,
         );
       }
     }

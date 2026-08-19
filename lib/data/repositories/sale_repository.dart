@@ -141,8 +141,7 @@ WHERE s.business_id = ? AND s.created_at >= ? AND s.created_at < ?
 
     final out = <DateTime, double>{};
     for (final row in rows) {
-      final at =
-          DateTime.fromMillisecondsSinceEpoch(row['created_at']! as int);
+      final at = DateTime.fromMillisecondsSinceEpoch(row['created_at']! as int);
       final day = DateTime(at.year, at.month, at.day);
       out[day] = (out[day] ?? 0) + ((row['total'] as num?) ?? 0).toDouble();
     }
@@ -162,7 +161,7 @@ WHERE s.business_id = ? AND s.created_at >= ? AND s.created_at < ?
       '''
 SELECT sl.name AS name,
        SUM(sl.qty) AS qty,
-       SUM(sl.qty * sl.unit_price) AS rev
+       SUM(sl.qty * sl.unit_price * sl.days) AS rev
 FROM $_lines sl
 INNER JOIN $_sales s ON s.id = sl.sale_id
 WHERE s.business_id = ?
@@ -209,15 +208,25 @@ ORDER BY rev DESC
             })>
         lines,
     String? customerId,
+    double discount = 0,
   }) async {
     final saleId = newLocalId('sale');
     final now = DateTime.now().millisecondsSinceEpoch;
-    double total = 0;
+    double subtotal = 0;
     for (final l in lines) {
       // Days is 1 for anything sold outright, so this is the same arithmetic
       // for a sale and a rental.
-      total += l.qty * l.unitPrice * l.days;
+      subtotal += l.qty * l.unitPrice * l.days;
     }
+
+    // Clamped rather than rejected. A discount larger than the sale is a
+    // typo, not a request to hand money over, and refusing the whole sale at
+    // the counter over it helps nobody — the most it can do is bring the
+    // total to zero.
+    final off = discount.isFinite && discount > 0
+        ? (discount > subtotal ? subtotal : discount)
+        : 0.0;
+    final total = subtotal - off;
 
     // Products that do not track stock — services, made-to-order items — have
     // no inventory to check or decrement. Resolved once here so the write loop
@@ -243,7 +252,8 @@ ORDER BY rev DESC
         final tracksStock =
             ((rows.first['track_stock'] as num?) ?? 1).toInt() == 1;
         tracked[l.productId] = tracksStock;
-        rented[l.productId] = ((rows.first['rental'] as num?) ?? 0).toInt() == 1;
+        rented[l.productId] =
+            ((rows.first['rental'] as num?) ?? 0).toInt() == 1;
         if (!tracksStock) continue;
 
         final stock = (rows.first['stock'] as num).toInt();
@@ -258,6 +268,7 @@ ORDER BY rev DESC
         'business_id': businessId,
         'customer_id': customerId,
         'total': total,
+        'discount': off,
         'created_at': now,
       });
 
@@ -433,7 +444,9 @@ LIMIT 1
   ) async {
     final rows = await _db.rawQuery(
       '''
-SELECT sl.name AS name, SUM(sl.qty * sl.unit_price) AS rev
+-- `* days` because a rental line is priced per day: leaving it
+-- out reported a three-day hire at one day's takings.
+SELECT sl.name AS name, SUM(sl.qty * sl.unit_price * sl.days) AS rev
 FROM $_lines sl
 INNER JOIN $_sales s ON s.id = sl.sale_id
 WHERE s.business_id = ?

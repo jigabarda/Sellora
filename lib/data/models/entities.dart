@@ -204,15 +204,26 @@ class Sale {
     required this.customerId,
     required this.total,
     required this.createdAt,
+    this.discount = 0,
     this.lines = const [],
   });
 
   final String id;
   final String businessId;
   final String? customerId;
+
+  /// What the customer paid, after any discount.
   final double total;
+
+  /// How much was taken off, in pesos. Zero for most sales.
+  final double discount;
+
   final DateTime createdAt;
   final List<SaleLine> lines;
+
+  /// What it came to before the discount. Derived rather than stored, so the
+  /// two figures can never drift apart.
+  double get subtotal => total + discount;
 
   factory Sale.fromMap(Map<String, Object?> m,
           {List<SaleLine> lines = const []}) =>
@@ -221,6 +232,7 @@ class Sale {
         businessId: m['business_id']! as String,
         customerId: m['customer_id'] as String?,
         total: (m['total'] as num).toDouble(),
+        discount: ((m['discount'] as num?) ?? 0).toDouble(),
         createdAt: DateTime.fromMillisecondsSinceEpoch(m['created_at']! as int),
         lines: lines,
       );
@@ -230,6 +242,7 @@ class Sale {
         'business_id': businessId,
         'customer_id': customerId,
         'total': total,
+        'discount': discount,
         'created_at': createdAt.millisecondsSinceEpoch,
       };
 }

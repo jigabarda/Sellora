@@ -9,6 +9,7 @@ import '../../data/models/entities.dart';
 import '../../data/quick_entry/quick_command.dart';
 import '../../data/sales/sale_cart.dart';
 import '../../providers.dart';
+import 'discount_sheet.dart';
 import 'quantity_sheet.dart';
 
 class NewSaleScreen extends ConsumerStatefulWidget {
@@ -41,7 +42,14 @@ class _NewSaleScreenState extends ConsumerState<NewSaleScreen> {
     _customerId = prefill.customer?.id;
   }
 
-  double get _total => _cart.total;
+  /// Taken off the sale, in pesos. Clamped down if the cart shrinks below it,
+  /// so a discount entered against a bigger cart can never exceed what is
+  /// left.
+  double _discount = 0;
+
+  double get _subtotal => _cart.total;
+  double get _discountApplied => _discount > _subtotal ? _subtotal : _discount;
+  double get _total => _subtotal - _discountApplied;
   int get _itemCount => _cart.itemCount;
 
   @override
@@ -93,19 +101,19 @@ class _NewSaleScreenState extends ConsumerState<NewSaleScreen> {
                           ),
                         ),
                         ..._cart.lines.map(
-                              (line) => Padding(
-                                padding: const EdgeInsets.only(bottom: Gap.sm),
-                                child: _CartCard(
-                                  line: line,
-                                  onDecrement: () => _changeQty(line, -1),
-                                  onIncrement: () => _changeQty(line, 1),
-                                  onRemove: () =>
-                                      setState(() => _cart.remove(line)),
-                                  onEditQty: () => _editQty(line),
-                                  onEditDays: () => _editDays(line),
-                                ),
-                              ),
+                          (line) => Padding(
+                            padding: const EdgeInsets.only(bottom: Gap.sm),
+                            child: _CartCard(
+                              line: line,
+                              onDecrement: () => _changeQty(line, -1),
+                              onIncrement: () => _changeQty(line, 1),
+                              onRemove: () =>
+                                  setState(() => _cart.remove(line)),
+                              onEditQty: () => _editQty(line),
+                              onEditDays: () => _editDays(line),
                             ),
+                          ),
+                        ),
                         Gap.h8,
                         OutlinedButton.icon(
                           onPressed: () => _pickProduct(products),
@@ -129,6 +137,28 @@ class _NewSaleScreenState extends ConsumerState<NewSaleScreen> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
+                      if (_discountApplied > 0) ...[
+                        Row(
+                          children: [
+                            Text('Subtotal', style: context.text.bodySmall),
+                            const Spacer(),
+                            Text(formatPhp(_subtotal),
+                                style: context.text.bodySmall),
+                          ],
+                        ),
+                        Row(
+                          children: [
+                            Text('Discount',
+                                style: context.text.bodySmall
+                                    ?.copyWith(color: t.success)),
+                            const Spacer(),
+                            Text('- ${formatPhp(_discountApplied)}',
+                                style: context.text.bodySmall
+                                    ?.copyWith(color: t.success)),
+                          ],
+                        ),
+                        Gap.h4,
+                      ],
                       Row(
                         children: [
                           Text('Total', style: context.text.bodyMedium),
@@ -137,7 +167,22 @@ class _NewSaleScreenState extends ConsumerState<NewSaleScreen> {
                               style: context.text.headlineSmall),
                         ],
                       ),
-                      Gap.h12,
+                      Gap.h4,
+                      // Left of the total rather than buried in a menu: a
+                      // discount is agreed while the customer is standing
+                      // there, not remembered afterwards.
+                      Align(
+                        alignment: Alignment.centerLeft,
+                        child: TextButton.icon(
+                          onPressed:
+                              (_saving || _cart.isEmpty) ? null : _editDiscount,
+                          icon: const Icon(Icons.sell_outlined, size: 18),
+                          label: Text(_discountApplied > 0
+                              ? 'Change discount'
+                              : 'Add discount'),
+                        ),
+                      ),
+                      Gap.h4,
                       FilledButton(
                         onPressed: (_saving || _cart.isEmpty) ? null : _submit,
                         child: _saving
@@ -192,6 +237,16 @@ class _NewSaleScreenState extends ConsumerState<NewSaleScreen> {
     setState(() => _cart.setQuantity(line, chosen));
   }
 
+  Future<void> _editDiscount() async {
+    final chosen = await askDiscount(
+      context,
+      subtotal: _subtotal,
+      current: _discountApplied,
+    );
+    if (chosen == null || !mounted) return;
+    setState(() => _discount = chosen);
+  }
+
   Future<void> _editDays(CartLine line) async {
     final chosen = await askQuantity(
       context,
@@ -219,7 +274,14 @@ class _NewSaleScreenState extends ConsumerState<NewSaleScreen> {
       message: 'Remove all $_itemCount items from this sale?',
       confirmLabel: 'Clear',
     );
-    if (confirmed && mounted) setState(_cart.clear);
+    // The discount goes with it: it was agreed against these items, and
+    // leaving it behind would silently apply it to whatever comes next.
+    if (confirmed && mounted) {
+      setState(() {
+        _cart.clear();
+        _discount = 0;
+      });
+    }
   }
 
   Future<void> _pickProduct(List<Product> products) async {
@@ -259,6 +321,7 @@ class _NewSaleScreenState extends ConsumerState<NewSaleScreen> {
             businessId: widget.businessId,
             customerId: _customerId,
             lines: _cart.toSaleLines(),
+            discount: _discountApplied,
           );
 
       ref.invalidate(salesProvider(widget.businessId));

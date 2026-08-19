@@ -59,6 +59,31 @@ CREATE TABLE products (
 );
 ''';
 
+/// `sales` and `sale_lines` as shipped up to v5 — before rental days and
+/// before discounts. The point of keeping them verbatim is that a real
+/// upgrade runs against these, not against the current schema with a few
+/// columns removed.
+const _v5Sales = '''
+CREATE TABLE sales (
+  id TEXT NOT NULL PRIMARY KEY,
+  business_id TEXT NOT NULL,
+  customer_id TEXT,
+  total REAL NOT NULL,
+  created_at INTEGER NOT NULL
+);
+''';
+
+const _v5SaleLines = '''
+CREATE TABLE sale_lines (
+  id TEXT NOT NULL PRIMARY KEY,
+  sale_id TEXT NOT NULL,
+  product_id TEXT NOT NULL,
+  name TEXT NOT NULL,
+  qty INTEGER NOT NULL,
+  unit_price REAL NOT NULL
+);
+''';
+
 Future<Set<String>> _columns(Database db, String table) async {
   final rows = await db.rawQuery('PRAGMA table_info($table)');
   return rows.map((r) => r['name']! as String).toSet();
@@ -143,6 +168,62 @@ void main() {
     final row = (await db.query('businesses')).single;
     expect(row['name'], 'Store');
     expect(row['user_id'], isNull);
+  });
+
+  test('v5 -> v7 adds rentals and discounts without disturbing what is there',
+      () async {
+    await db.execute(_v3Products);
+    await db.execute(_v5Sales);
+    await db.execute(_v5SaleLines);
+    await db.insert('sales', {
+      'id': 'sale_1',
+      'business_id': 'biz_1',
+      'customer_id': null,
+      'total': 250.0,
+      'created_at': 1,
+    });
+    await db.insert('sale_lines', {
+      'id': 'ln_1',
+      'sale_id': 'sale_1',
+      'product_id': 'prd_1',
+      'name': 'Ice',
+      'qty': 5,
+      'unit_price': 50.0,
+    });
+
+    await SelloraDatabase.migrate(db, 5);
+
+    expect(await _columns(db, 'products'), contains('rental'));
+    expect(
+      await _columns(db, 'sale_lines'),
+      containsAll(['days', 'returned_qty']),
+    );
+    expect(await _columns(db, 'sales'), contains('discount'));
+
+    // The defaults are chosen so no row already in the database needs
+    // touching: nothing was a rental, everything was for one day, nothing has
+    // come back, and nobody was given money off.
+    final line = (await db.query('sale_lines')).single;
+    expect(line['days'], 1);
+    expect(line['returned_qty'], 0);
+
+    final sale = (await db.query('sales')).single;
+    expect(sale['total'], 250.0, reason: 'the money recorded is unchanged');
+    expect(sale['discount'], 0);
+  });
+
+  test('re-running the v6/v7 steps is a no-op rather than an error', () async {
+    // The columns are added by asking the database what it already has, so an
+    // upgrade that runs twice — a crash mid-migration, a version bumped in
+    // two places — must not fail on a duplicate column.
+    await db.execute(_v3Products);
+    await db.execute(_v5Sales);
+    await db.execute(_v5SaleLines);
+
+    await SelloraDatabase.migrate(db, 5);
+    await SelloraDatabase.migrate(db, 5);
+
+    expect(await _columns(db, 'sales'), contains('discount'));
   });
 
   test('v2 -> v5 adds the product columns without touching users again',

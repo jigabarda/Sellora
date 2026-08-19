@@ -156,7 +156,7 @@ void _writeSales(Sheet sheet, ReportExportData data) {
         TextCellValue(line.name),
         IntCellValue(line.qty),
         DoubleCellValue(line.unitPrice),
-        DoubleCellValue(line.qty * line.unitPrice),
+        DoubleCellValue(line.total),
       ]);
     }
   }
