@@ -126,6 +126,15 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                           size: 18),
                       label: const Text('Restore from a backup file'),
                     ),
+                    // Someone who has forgotten their password does not think
+                    // to look under "restore", so the words they are actually
+                    // searching for have to be on the screen.
+                    Text(
+                      'Forgotten your password? Restoring a backup lets you '
+                      'set a new one.',
+                      style: context.text.bodySmall,
+                      textAlign: TextAlign.center,
+                    ),
                   ],
                 ),
               ),

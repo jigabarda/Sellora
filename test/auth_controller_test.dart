@@ -76,6 +76,66 @@ void main() {
       expect(auth.state.userId, isNot('usr_does_not_exist'));
     });
 
+    test('a forgotten password can be replaced after restoring', () async {
+      // The whole recovery story end to end: password forgotten, backup file
+      // in hand, and a way back in that does not need the old one.
+      final backup = await BackupService(db).exportToJson(auth.state.userId!);
+      await auth.logout();
+      await db.delete('users');
+
+      final id = await BackupService(db).restore(backup);
+      await auth.adoptRestoredSession(id);
+      await auth.setPasswordAfterRestore('brandnew456');
+
+      await auth.logout();
+      await auth.login(username: 'owner', password: 'brandnew456');
+      expect(auth.isLoggedIn, isTrue);
+    });
+
+    test('the forgotten password stops working once it is replaced', () async {
+      await auth.setPasswordAfterRestore('brandnew456');
+      await auth.logout();
+
+      await expectLater(
+        auth.login(username: 'owner', password: 'secret123'),
+        throwsA(isA<AuthException>()),
+      );
+    });
+
+    test('replacing the password rotates the salt too', () async {
+      Future<String> saltNow() async => (await db.query('users',
+              columns: ['salt'],
+              where: 'id = ?',
+              whereArgs: [auth.state.userId]))
+          .single['salt']! as String;
+
+      final before = await saltNow();
+      await auth.setPasswordAfterRestore('brandnew456');
+
+      // A reused salt would leave the old hash meaningful against a rainbow
+      // table built for it, which is the point of having one at all.
+      expect(await saltNow(), isNot(before));
+    });
+
+    test('a replacement password is held to the same minimum', () async {
+      await expectLater(
+        auth.setPasswordAfterRestore('short'),
+        throwsA(isA<AuthException>()),
+      );
+      // And the old one still works, so a rejected attempt locks nobody out.
+      await auth.logout();
+      await auth.login(username: 'owner', password: 'secret123');
+      expect(auth.isLoggedIn, isTrue);
+    });
+
+    test('nobody signed in can set a password', () async {
+      await auth.logout();
+      await expectLater(
+        auth.setPasswordAfterRestore('brandnew456'),
+        throwsA(isA<AuthException>()),
+      );
+    });
+
     test('the adopted session survives a restart', () async {
       final id = auth.state.userId!;
       await auth.logout();

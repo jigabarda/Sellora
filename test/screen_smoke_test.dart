@@ -11,6 +11,8 @@ List<({String name, String path})> routesFor(String bizId) => [
       (name: 'home', path: '/'),
       (name: 'new business', path: '/business/new'),
       (name: 'backup', path: '/backup'),
+      // Signed-in, though only ever reached straight off a restore.
+      (name: 'new password', path: '/new-password'),
       (name: 'dashboard', path: '/business/$bizId/dashboard'),
       (name: 'products', path: '/business/$bizId/products'),
       (name: 'new product', path: '/business/$bizId/products/new'),

@@ -9,6 +9,7 @@ import 'features/auth/landing_screen.dart';
 import 'features/auth/login_screen.dart';
 import 'features/auth/register_screen.dart';
 import 'features/backup/backup_screen.dart';
+import 'features/auth/new_password_screen.dart';
 import 'features/backup/restore_screen.dart';
 import 'features/business/new_business_screen.dart';
 import 'features/categories/categories_screen.dart';
@@ -104,6 +105,14 @@ final goRouterProvider = Provider<GoRouter>((ref) {
         path: '/restore',
         name: 'restore',
         builder: (context, state) => const RestoreScreen(),
+      ),
+      // Signed-in, and deliberately not in any menu: the only way here is
+      // straight off a restore, which is the moment ownership was proved.
+      GoRoute(
+        path: '/new-password',
+        name: 'new_password',
+        builder: (context, state) =>
+            NewPasswordScreen(username: state.extra as String? ?? ''),
       ),
       GoRoute(
         path: '/',
