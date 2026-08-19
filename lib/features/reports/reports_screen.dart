@@ -8,7 +8,11 @@ import 'package:share_plus/share_plus.dart';
 import '../../core/dates.dart';
 import '../../core/money.dart';
 import '../../core/sellora_ui.dart';
+import '../../data/export/device_downloads.dart';
 import '../../providers.dart';
+
+const _xlsxMimeType =
+    'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
 
 /// Presets cover the ranges a shop owner actually asks for; the custom picker
 /// is there for everything else.
@@ -148,24 +152,31 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
                     to: _to,
                   ),
                   Gap.h16,
-                  OutlinedButton.icon(
-                    onPressed: _exporting ? null : _export,
+                  FilledButton.icon(
+                    onPressed: _exporting ? null : _saveToDevice,
                     icon: _exporting
                         ? const SizedBox(
                             width: 16,
                             height: 16,
                             child: CircularProgressIndicator(strokeWidth: 2),
                           )
-                        : const Icon(Icons.table_view_outlined, size: 18),
+                        : const Icon(Icons.download_outlined, size: 18),
                     label: Text(
-                      _exporting ? 'Preparing…' : 'Export to Excel',
+                      _exporting ? 'Preparing…' : 'Save to device',
                     ),
                   ),
                   Gap.h8,
+                  OutlinedButton.icon(
+                    onPressed: _exporting ? null : _share,
+                    icon: const Icon(Icons.ios_share, size: 18),
+                    label: const Text('Send a copy'),
+                  ),
+                  Gap.h8,
                   Text(
-                    'A spreadsheet of this period — summary, every sale, '
-                    'products and expenses. Sent wherever you choose; it '
-                    'never leaves the phone on its own.',
+                    'An Excel file of this period — summary, every sale, '
+                    'products and expenses. Saving puts it in Downloads; '
+                    'sending hands it to an app you pick. It never leaves the '
+                    'phone on its own.',
                     style: context.text.bodySmall,
                     textAlign: TextAlign.center,
                   ),
@@ -178,7 +189,44 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
     );
   }
 
-  Future<void> _export() async {
+  /// Puts the spreadsheet in Downloads, where the owner can find it again.
+  ///
+  /// Falls through to the share sheet on Android 9 and older, where saving to
+  /// a public folder would mean asking for a storage permission this app does
+  /// not have and is not going to acquire for an export.
+  Future<void> _saveToDevice() async {
+    setState(() => _exporting = true);
+    try {
+      final report = await ref.read(reportExportServiceProvider).buildReport(
+            businessId: widget.businessId,
+            from: _from,
+            to: _to,
+            generatedAt: DateTime.now(),
+          );
+
+      final saved = await ref.read(deviceDownloadsProvider).save(
+            fileName: report.fileName,
+            bytes: report.bytes,
+            mimeType: _xlsxMimeType,
+          );
+
+      if (!mounted) return;
+      showToast(context, 'Saved to Downloads as $saved');
+    } on DownloadsUnsupported {
+      if (!mounted) return;
+      showToast(context, 'This phone cannot save straight to Downloads — '
+          'choose where to put it instead.');
+      setState(() => _exporting = false);
+      await _share();
+      return;
+    } catch (e) {
+      if (mounted) showToast(context, 'Could not save: $e', isError: true);
+    } finally {
+      if (mounted) setState(() => _exporting = false);
+    }
+  }
+
+  Future<void> _share() async {
     setState(() => _exporting = true);
     File? file;
     try {
@@ -194,15 +242,14 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
           files: [
             XFile(
               file.path,
-              mimeType:
-                  'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+              mimeType: _xlsxMimeType,
             ),
           ],
           subject: 'Sellora report ${formatDay(_from)} to ${formatDay(_to)}',
         ),
       );
     } catch (e) {
-      if (mounted) showToast(context, 'Export failed: $e', isError: true);
+      if (mounted) showToast(context, 'Sharing failed: $e', isError: true);
     } finally {
       // The share sheet copies what it needs; the cache copy is disposable.
       try {

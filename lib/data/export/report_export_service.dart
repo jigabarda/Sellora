@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'dart:typed_data';
 
 import 'package:path_provider/path_provider.dart';
 
@@ -69,11 +70,11 @@ class ReportExportService {
     );
   }
 
-  /// Writes the report to the cache directory and returns the file.
+  /// The finished spreadsheet and the name it should carry.
   ///
-  /// Cache is deliberate: the copy is a hand-off for the share sheet, not
-  /// storage. Wherever the user sends it is the real copy.
-  Future<File> writeReportFile({
+  /// Both destinations start here: saving to Downloads hands the bytes
+  /// straight to MediaStore, while sharing needs them on disk first.
+  Future<({String fileName, Uint8List bytes})> buildReport({
     required String businessId,
     required DateTime from,
     required DateTime to,
@@ -85,13 +86,32 @@ class ReportExportService {
       to: to,
       generatedAt: generatedAt,
     );
-    final bytes = buildReportWorkbook(data);
+    return (
+      fileName: reportFileName(data.businessName, from, to),
+      bytes: Uint8List.fromList(buildReportWorkbook(data)),
+    );
+  }
+
+  /// Writes the report to the cache directory and returns the file.
+  ///
+  /// Cache is deliberate: the copy is a hand-off for the share sheet, not
+  /// storage. Wherever the user sends it is the real copy.
+  Future<File> writeReportFile({
+    required String businessId,
+    required DateTime from,
+    required DateTime to,
+    required DateTime generatedAt,
+  }) async {
+    final report = await buildReport(
+      businessId: businessId,
+      from: from,
+      to: to,
+      generatedAt: generatedAt,
+    );
 
     final dir = await getTemporaryDirectory();
-    final file = File(
-      '${dir.path}/${reportFileName(data.businessName, from, to)}',
-    );
-    await file.writeAsBytes(bytes, flush: true);
+    final file = File('${dir.path}/${report.fileName}');
+    await file.writeAsBytes(report.bytes, flush: true);
     return file;
   }
 }

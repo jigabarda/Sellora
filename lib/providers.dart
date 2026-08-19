@@ -5,6 +5,7 @@ import 'package:sqflite/sqflite.dart';
 import 'core/dates.dart';
 import 'data/auth/auth_controller.dart';
 import 'data/backup/backup_service.dart';
+import 'data/export/device_downloads.dart';
 import 'data/export/report_export_service.dart';
 import 'data/insights/insight.dart';
 import 'data/insights/insights_service.dart';
@@ -61,6 +62,10 @@ final refundRepositoryProvider = Provider<RefundRepository>(
 final insightsServiceProvider = Provider<InsightsService>(
   (ref) => InsightsService(ref.watch(databaseProvider)),
 );
+
+/// Saving a generated file into the device's Downloads folder.
+final deviceDownloadsProvider =
+    Provider<DeviceDownloads>((ref) => const DeviceDownloads());
 
 final reportExportServiceProvider = Provider<ReportExportService>(
   (ref) => ReportExportService(
