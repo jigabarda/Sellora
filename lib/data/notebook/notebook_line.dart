@@ -15,6 +15,16 @@ enum LineStatus {
   /// or it disagreed with the price list. Recordable, but only deliberately.
   needsReview,
 
+  /// Already written to the books by a previous tap on Record.
+  ///
+  /// This exists because recording a page can partly fail — one line runs the
+  /// shelf down while the rest go in. The preview stays open so the owner can
+  /// deal with the failure, and without this the lines that succeeded would sit
+  /// there still ticked and indistinguishable from the ones that did not.
+  /// Restock, tick everything, record again, and the successful lines would be
+  /// written a second time. A recorded line is never recordable again.
+  recorded,
+
   /// No product could be identified. Nothing to record.
   unreadable,
 
@@ -65,6 +75,10 @@ class NotebookLine {
   double get total => (product?.price ?? 0) * quantity;
 
   /// Whether this line can become a sale at all.
+  ///
+  /// [LineStatus.recorded] is deliberately absent: a line that is already in
+  /// the books must not be selectable, or a partly-failed page could be
+  /// recorded twice.
   bool get isRecordable =>
       product != null &&
       quantity > 0 &&
@@ -106,6 +120,9 @@ class NotebookPage {
 
   int get needsReviewCount =>
       lines.where((l) => l.status == LineStatus.needsReview).length;
+
+  int get recordedCount =>
+      lines.where((l) => l.status == LineStatus.recorded).length;
 
   /// True when the photo produced nothing worth showing a preview for — a
   /// picture of a wall, a page too blurred to resolve.

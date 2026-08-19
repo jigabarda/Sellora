@@ -1,4 +1,5 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:image_picker/image_picker.dart';
 import 'package:sqflite/sqflite.dart';
 
 import 'core/dates.dart';
@@ -63,6 +64,25 @@ final insightsServiceProvider = Provider<InsightsService>(
 final backupServiceProvider = Provider<BackupService>(
   (ref) => BackupService(ref.watch(databaseProvider)),
 );
+
+/// Choosing a photo, behind a provider for the same reason the recogniser is:
+/// the capture flow has to be drivable in a test, and `ImagePicker` talks to a
+/// platform channel that does not exist there.
+typedef ImagePick = Future<String?> Function(ImageSource source);
+
+final imagePickerProvider = Provider<ImagePick>((ref) {
+  return (source) async {
+    final file = await ImagePicker().pickImage(
+      source: source,
+      // Downscaled before it reaches the recogniser. A 12-megapixel photo of a
+      // notebook page is slower to process and no more legible than this, and
+      // the phones this runs on do not have the memory to spare.
+      maxWidth: 2000,
+      imageQuality: 90,
+    );
+    return file?.path;
+  };
+});
 
 /// On-device text recognition for photographed ledger pages.
 ///

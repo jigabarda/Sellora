@@ -130,8 +130,8 @@ class NotebookParser {
       return NotebookLine(
         raw: raw,
         status: LineStatus.unreadable,
-        note: 'Could be ${confident.take(2).map((s) => s.item.name).join(' or '
-            '')}',
+        note: 'Could be '
+            '${confident.take(2).map((s) => s.item.name).join(' or ')}',
       );
     }
 

@@ -77,21 +77,14 @@ class _NotebookCaptureScreenState extends ConsumerState<NotebookCaptureScreen> {
     List<Product> products,
     List<Customer> customers,
   ) async {
-    final XFile? file;
+    final String? path;
     try {
-      file = await ImagePicker().pickImage(
-        source: source,
-        // Downscaled before it reaches the recogniser. A 12-megapixel photo of
-        // a notebook page is slower to process and no more legible than this,
-        // and the phones this runs on do not have the memory to spare.
-        maxWidth: 2000,
-        imageQuality: 90,
-      );
+      path = await ref.read(imagePickerProvider)(source);
     } catch (e) {
       if (mounted) setState(() => _error = 'Could not open the camera: $e');
       return;
     }
-    if (file == null) return; // Backed out of the picker.
+    if (path == null) return; // Backed out of the picker.
 
     setState(() {
       _busy = true;
@@ -99,7 +92,7 @@ class _NotebookCaptureScreenState extends ConsumerState<NotebookCaptureScreen> {
     });
 
     try {
-      final text = await ref.read(textRecogniserProvider).recognise(file.path);
+      final text = await ref.read(textRecogniserProvider).recognise(path);
       final page = const NotebookParser()
           .parse(text, products: products, customers: customers);
       if (!mounted) return;
@@ -166,9 +159,17 @@ class _NotebookCaptureScreenState extends ConsumerState<NotebookCaptureScreen> {
       _error = null;
     });
 
+    // Resolved before the awaits below. Looking either up afterwards means
+    // reading an ancestor through a context whose route is already leaving.
+    final messenger = ScaffoldMessenger.of(context);
+    final navigator = Navigator.of(context);
+
     final repo = ref.read(saleRepositoryProvider);
     var recorded = 0;
     final failures = <String>[];
+    // Which lines actually reached the database, so a partly-failed page can
+    // mark them and stop them being written twice.
+    final done = <int>{};
 
     // One sale per line rather than one basket: the lines have different
     // customers, and collapsing them would lose which refill was whose.
@@ -190,6 +191,7 @@ class _NotebookCaptureScreenState extends ConsumerState<NotebookCaptureScreen> {
           ],
         );
         recorded++;
+        done.add(i);
       } on StateError catch (e) {
         // Almost always insufficient stock. The rest of the page still goes
         // in — losing eight good lines because the ninth ran the shelf down
@@ -206,8 +208,8 @@ class _NotebookCaptureScreenState extends ConsumerState<NotebookCaptureScreen> {
     ref.invalidate(insightsProvider(widget.businessId));
 
     if (failures.isEmpty) {
-      Navigator.of(context).pop();
-      ScaffoldMessenger.of(context).showSnackBar(
+      navigator.pop();
+      messenger.showSnackBar(
         SnackBar(
           content: Text(
             'Recorded $recorded ${recorded == 1 ? 'sale' : 'sales'}',
@@ -220,6 +222,12 @@ class _NotebookCaptureScreenState extends ConsumerState<NotebookCaptureScreen> {
     setState(() {
       _busy = false;
       _selected.clear();
+      // The preview stays open so the owner can deal with the failure, which
+      // means the lines that succeeded are still on screen. Mark them, or a
+      // restock followed by ticking the page again would record them twice.
+      for (final i in done) {
+        _lines![i] = _lines![i].copyWith(status: LineStatus.recorded);
+      }
       _error = 'Recorded $recorded. Could not record '
           '${failures.length}: ${failures.join('; ')}';
     });
@@ -338,8 +346,15 @@ class _Preview extends StatelessWidget {
               child: Text(
                 page.isBlank
                     ? 'Nothing readable on that photo'
-                    : '${page.reconciledCount} of ${lines.length} lines '
-                        'added up',
+                    // Once some lines are in the books the original tally is
+                    // no longer the useful number — what is left to deal with
+                    // is.
+                    : page.recordedCount > 0
+                        ? '${page.recordedCount} recorded · '
+                            '${lines.length - page.recordedCount} left on '
+                            'this page'
+                        : '${page.reconciledCount} of ${lines.length} lines '
+                            'added up',
                 style: context.text.bodyMedium,
               ),
             ),
@@ -385,6 +400,7 @@ class _LineTile extends StatelessWidget {
     final (label, tone) = switch (line.status) {
       LineStatus.reconciled => ('Adds up', PillTone.success),
       LineStatus.needsReview => ('Check this', PillTone.warning),
+      LineStatus.recorded => ('Recorded', PillTone.accent),
       LineStatus.unreadable => ("Couldn't read", PillTone.danger),
       LineStatus.ignored => ('Skipped', PillTone.neutral),
     };
@@ -406,6 +422,14 @@ class _LineTile extends StatelessWidget {
                 onChanged: (_) => onToggle(),
                 visualDensity: VisualDensity.compact,
               ),
+            )
+          else if (line.status == LineStatus.recorded)
+            // Where the checkbox was, so the eye reads down the column and
+            // sees at a glance which lines are already in the books.
+            SizedBox(
+              width: 24,
+              height: 24,
+              child: Icon(Icons.check_circle, size: 20, color: t.accent),
             )
           else
             const SizedBox(width: 24, height: 24),
@@ -461,7 +485,8 @@ class _LineTile extends StatelessWidget {
                   children: [
                     SelloraPill(label: label, tone: tone),
                     const Spacer(),
-                    if (line.status != LineStatus.ignored)
+                    if (line.status != LineStatus.ignored &&
+                        line.status != LineStatus.recorded)
                       TextButton(
                         onPressed: onEdit,
                         child: const Text('Edit'),

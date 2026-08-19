@@ -113,6 +113,14 @@ Collapsing them would lose which refill was whose.
 recorded and the failure is reported. Losing eight good lines to one bad one is
 the worse outcome.
 
+**… and what went in cannot go in twice.** The corollary, and the one that was
+missed on the first pass. Because the preview stays open after a partial
+failure, the lines that succeeded are still on screen beside the one that did
+not. If they stayed selectable, the obvious next move — restock, tick the page,
+record again — would write them to the books a second time. They become
+`recorded`, which is a status no tick can reach. `test/notebook_capture_test.dart`
+drives the whole flow against a real database and fails if that is undone.
+
 ## The offline constraint, and the trap in it
 
 Sellora ships with **no network permission**. That is the mechanism that makes
@@ -234,6 +242,7 @@ which is precisely what happened.
 | --- | --- | --- |
 | `reconciled` | qty × catalogue price == amount on the page | *Adds up*, ticked |
 | `needsReview` | read something, nothing confirmed it | *Check this*, unticked |
+| `recorded` | already written by an earlier tap on Record | *Recorded*, not selectable |
 | `unreadable` | no product identified | *Couldn't read*, not selectable |
 | `ignored` | date header, column title, running total | *Skipped*, not selectable |
 
