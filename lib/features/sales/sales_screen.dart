@@ -156,10 +156,29 @@ class _SaleCard extends StatelessWidget {
             Gap.h8,
             ...sale.lines.map(
               (l) => DetailRow(
-                label: '${l.name} × ${l.qty}',
-                value: formatPhp(l.qty * l.unitPrice),
+                // A rental line is priced per day, so the days belong in the
+                // label and in the money. Multiplying only qty by price here
+                // showed a three-day hire at one day's rate.
+                label: l.days > 1
+                    ? '${l.name} × ${l.qty} × ${l.days} days'
+                    : '${l.name} × ${l.qty}',
+                value: formatPhp(l.total),
               ),
             ),
+            if (sale.discount > 0) ...[
+              Gap.h4,
+              Container(height: 1, color: t.line),
+              Gap.h4,
+              DetailRow(
+                label: 'Subtotal',
+                value: formatPhp(sale.subtotal),
+              ),
+              DetailRow(
+                label: 'Discount',
+                value: '- ${formatPhp(sale.discount)}',
+              ),
+              DetailRow(label: 'Total', value: formatPhp(sale.total)),
+            ],
           ],
         ),
       ),

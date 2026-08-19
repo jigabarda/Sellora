@@ -21,6 +21,7 @@ List<({String name, String path})> routesFor(String bizId) => [
       (name: 'sales', path: '/business/$bizId/sales'),
       (name: 'new sale', path: '/business/$bizId/sales/new'),
       (name: 'counter', path: '/business/$bizId/sales/counter'),
+      (name: 'rentals out', path: '/business/$bizId/sales/rentals'),
       (name: 'more', path: '/business/$bizId/more'),
       (name: 'customers', path: '/business/$bizId/customers'),
       (name: 'new customer', path: '/business/$bizId/customers/new'),

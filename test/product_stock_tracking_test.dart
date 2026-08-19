@@ -121,7 +121,10 @@ void main() {
 
     await sales.recordSale(
       businessId: _bizId,
-      lines: [(productId: 'prd_1', name: 'Coffee', qty: 3, unitPrice: 50.0)],
+      lines: [
+        const SaleLineDraft(
+            productId: 'prd_1', name: 'Coffee', qty: 3, unitPrice: 50.0)
+      ],
     );
 
     expect(await _stockOf(db, 'prd_1'), 7);
@@ -141,12 +144,11 @@ void main() {
     final saleId = await sales.recordSale(
       businessId: _bizId,
       lines: [
-        (
-          productId: 'prd_svc',
-          name: 'Delivery Service',
-          qty: 5,
-          unitPrice: 50.0
-        )
+        const SaleLineDraft(
+            productId: 'prd_svc',
+            name: 'Delivery Service',
+            qty: 5,
+            unitPrice: 50.0)
       ],
     );
 
@@ -171,7 +173,8 @@ void main() {
     await sales.recordSale(
       businessId: _bizId,
       lines: [
-        (productId: 'prd_svc', name: 'Consulting', qty: 99, unitPrice: 50.0)
+        const SaleLineDraft(
+            productId: 'prd_svc', name: 'Consulting', qty: 99, unitPrice: 50.0)
       ],
     );
     expect(await _stockOf(db, 'prd_svc'), 0);
@@ -183,7 +186,10 @@ void main() {
     await expectLater(
       sales.recordSale(
         businessId: _bizId,
-        lines: [(productId: 'prd_1', name: 'Coffee', qty: 5, unitPrice: 50.0)],
+        lines: [
+          const SaleLineDraft(
+              productId: 'prd_1', name: 'Coffee', qty: 5, unitPrice: 50.0)
+        ],
       ),
       throwsA(isA<StateError>()),
     );
@@ -205,8 +211,10 @@ void main() {
     await sales.recordSale(
       businessId: _bizId,
       lines: [
-        (productId: 'prd_1', name: 'Coffee', qty: 2, unitPrice: 50.0),
-        (productId: 'prd_svc', name: 'Delivery', qty: 1, unitPrice: 50.0),
+        const SaleLineDraft(
+            productId: 'prd_1', name: 'Coffee', qty: 2, unitPrice: 50.0),
+        const SaleLineDraft(
+            productId: 'prd_svc', name: 'Delivery', qty: 1, unitPrice: 50.0),
       ],
     );
 

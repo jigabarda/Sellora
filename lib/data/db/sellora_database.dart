@@ -7,7 +7,7 @@ class SelloraDatabase {
   SelloraDatabase._();
 
   static const _fileName = 'sellora.db';
-  static const _version = 5;
+  static const _version = 8;
 
   static Future<Database> open() async {
     final dir = await getApplicationDocumentsDirectory();
@@ -83,6 +83,52 @@ class SelloraDatabase {
     if (oldVersion >= 3 && oldVersion < 5) {
       await _replaceUserEmailsWithUsernames(db);
     }
+    // Rentals. Defaults are chosen so every row already in the database is
+    // correct without being touched: nothing was a rental, everything was for
+    // one day, and nothing has come back because nothing went out.
+    if (oldVersion < 6) {
+      await _addColumn(db, 'products', 'rental', 'INTEGER NOT NULL DEFAULT 0');
+      await _addColumn(db, 'sale_lines', 'days', 'INTEGER NOT NULL DEFAULT 1');
+      await _addColumn(
+          db, 'sale_lines', 'returned_qty', 'INTEGER NOT NULL DEFAULT 0');
+    }
+    // Discounts. Zero is right for every sale already recorded — none of them
+    // had one — so no backfill is needed beyond the default.
+    if (oldVersion < 7) {
+      await _addColumn(db, 'sales', 'discount', 'REAL NOT NULL DEFAULT 0');
+    }
+    // Rental periods as dates. Nullable rather than defaulted: there is no
+    // sensible constant to backfill, and null already means "starts when the
+    // sale was recorded", which is what every existing rental meant.
+    if (oldVersion < 8) {
+      await _addColumn(db, 'sale_lines', 'starts_at', 'INTEGER');
+    }
+  }
+
+  /// Adds a column unless the table already has it, or does not exist at all.
+  ///
+  /// The steps above guard themselves with version ranges, which works but has
+  /// to reason about which earlier step already created the table with the
+  /// column in it — that is the sort of bookkeeping that goes wrong quietly
+  /// three releases later. Asking the database what it actually has is both
+  /// shorter and idempotent: re-running a step is a no-op rather than a
+  /// duplicate-column failure.
+  static Future<void> _addColumn(
+    Database db,
+    String table,
+    String column,
+    String definition,
+  ) async {
+    final tables = await db.rawQuery(
+      "SELECT name FROM sqlite_master WHERE type = 'table' AND name = ?",
+      [table],
+    );
+    if (tables.isEmpty) return;
+
+    final columns = await db.rawQuery('PRAGMA table_info($table)');
+    if (columns.any((c) => c['name'] == column)) return;
+
+    await db.execute('ALTER TABLE $table ADD COLUMN $column $definition');
   }
 
   /// Rebuilds `users` so accounts are identified by a username instead of an
@@ -219,6 +265,9 @@ CREATE TABLE products (
   price REAL NOT NULL,
   stock INTEGER NOT NULL DEFAULT 0,
   track_stock INTEGER NOT NULL DEFAULT 1,
+  -- Rented out rather than sold. `price` is then a rate per day, and the
+  -- stock that goes out is expected back: see sale_lines.returned_qty.
+  rental INTEGER NOT NULL DEFAULT 0,
   active INTEGER NOT NULL DEFAULT 1,
   created_at INTEGER NOT NULL,
   FOREIGN KEY (business_id) REFERENCES businesses(id) ON DELETE CASCADE,
@@ -244,7 +293,15 @@ CREATE TABLE sales (
   id TEXT NOT NULL PRIMARY KEY,
   business_id TEXT NOT NULL,
   customer_id TEXT,
+  -- What the customer actually paid. Every report and every dashboard total
+  -- reads this column, so it stays the net figure and a discount never has to
+  -- be remembered about downstream.
   total REAL NOT NULL,
+  -- How much was taken off, kept so a receipt can show the arithmetic. Stored
+  -- in pesos even when it was entered as a percentage: a stored percentage is
+  -- ambiguous the moment prices change, and a peso amount is what was
+  -- actually given up.
+  discount REAL NOT NULL DEFAULT 0,
   created_at INTEGER NOT NULL,
   FOREIGN KEY (business_id) REFERENCES businesses(id) ON DELETE CASCADE,
   FOREIGN KEY (customer_id) REFERENCES customers(id) ON DELETE SET NULL
@@ -259,6 +316,17 @@ CREATE TABLE sale_lines (
   name TEXT NOT NULL,
   qty INTEGER NOT NULL,
   unit_price REAL NOT NULL,
+  -- How long it was rented for. 1 for anything sold outright, so the line
+  -- total is always qty * unit_price * days and nothing has to branch.
+  days INTEGER NOT NULL DEFAULT 1,
+  -- When the rental period starts. Null for anything sold outright, and null
+  -- on every line recorded before rentals had dates, in which case the sale's
+  -- own timestamp is the start — which is exactly what those rows meant.
+  starts_at INTEGER,
+  -- How many of `qty` have come back. Only ever above zero for a rental, and
+  -- allowed to be less than `qty`: nineteen of twenty chairs is a real
+  -- Sunday, and forcing it to be all-or-nothing would make the owner lie.
+  returned_qty INTEGER NOT NULL DEFAULT 0,
   FOREIGN KEY (sale_id) REFERENCES sales(id) ON DELETE CASCADE,
   FOREIGN KEY (product_id) REFERENCES products(id) ON DELETE RESTRICT
 );

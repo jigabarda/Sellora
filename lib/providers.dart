@@ -177,6 +177,16 @@ final refundsProvider = FutureProvider.autoDispose
   return ref.watch(refundRepositoryProvider).listForBusiness(businessId);
 });
 
+/// Everything rented out and not yet back.
+///
+/// `autoDispose` like its neighbours: the list changes the moment anything is
+/// taken back, and holding it would show the owner a row for chairs already
+/// standing in the corner.
+final outstandingRentalsProvider = FutureProvider.autoDispose
+    .family<List<OutstandingRental>, String>((ref, businessId) async {
+  return ref.watch(saleRepositoryProvider).listOutstandingRentals(businessId);
+});
+
 final stockLedgerProvider = FutureProvider.autoDispose
     .family<List<StockLedgerEntry>, String>((ref, businessId) async {
   return ref.watch(productRepositoryProvider).ledgerForBusiness(businessId);

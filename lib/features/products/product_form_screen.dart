@@ -34,6 +34,7 @@ class _ProductFormScreenState extends ConsumerState<ProductFormScreen> {
   String? _categoryId;
   String _unit = kDefaultProductUnit;
   bool _trackStock = true;
+  bool _rental = false;
   bool _active = true;
 
   bool _saving = false;
@@ -64,6 +65,7 @@ class _ProductFormScreenState extends ConsumerState<ProductFormScreen> {
             _categoryId = p.categoryId;
             _unit = p.unit;
             _trackStock = p.trackStock;
+            _rental = p.rental;
             _active = p.active;
           }
         });
@@ -144,8 +146,11 @@ class _ProductFormScreenState extends ConsumerState<ProductFormScreen> {
                                   RegExp(r'[0-9.]')),
                             ],
                             textInputAction: TextInputAction.next,
-                            decoration: const InputDecoration(
-                              labelText: 'Price',
+                            decoration: InputDecoration(
+                              // A rental's price is a rate, and calling it one
+                              // is the difference between ten pesos a chair and
+                              // ten pesos a chair a day.
+                              labelText: _rental ? 'Price per day' : 'Price',
                               prefixText: '₱ ',
                             ),
                             validator: (v) {
@@ -163,6 +168,32 @@ class _ProductFormScreenState extends ConsumerState<ProductFormScreen> {
                             decoration: const InputDecoration(
                               labelText: 'Description',
                               hintText: 'Optional',
+                            ),
+                          ),
+                        ],
+                      ),
+                      Gap.h12,
+                      _card(
+                        icon: Icons.event_repeat_outlined,
+                        title: 'Sold or rented',
+                        subtitle: 'What happens when it leaves the shop',
+                        children: [
+                          SwitchListTile.adaptive(
+                            value: _rental,
+                            onChanged: (v) => setState(() => _rental = v),
+                            contentPadding: EdgeInsets.zero,
+                            title: Text(
+                              'Rented out, not sold',
+                              style: context.text.bodyLarge
+                                  ?.copyWith(fontWeight: FontWeight.w600),
+                            ),
+                            subtitle: Text(
+                              _rental
+                                  ? 'Price is charged per day, and stock comes '
+                                      'back when the customer returns it.'
+                                  : 'Turn on for chairs, tables, sound systems '
+                                      '— anything you expect back.',
+                              style: context.text.bodySmall,
                             ),
                           ),
                         ],
@@ -353,6 +384,7 @@ class _ProductFormScreenState extends ConsumerState<ProductFormScreen> {
           price: price,
           stock: stock,
           trackStock: _trackStock,
+          rental: _rental,
           active: true,
           createdAt: DateTime.now(),
         ));
@@ -375,6 +407,7 @@ class _ProductFormScreenState extends ConsumerState<ProductFormScreen> {
           // single source of truth for inventory changes.
           stock: _trackStock ? existing.stock : 0,
           trackStock: _trackStock,
+          rental: _rental,
           active: _active,
           createdAt: existing.createdAt,
         ));

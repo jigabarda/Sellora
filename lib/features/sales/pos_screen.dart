@@ -7,6 +7,9 @@ import '../../core/sellora_ui.dart';
 import '../../data/models/entities.dart';
 import '../../data/sales/sale_cart.dart';
 import '../../providers.dart';
+import '../../core/dates.dart';
+import 'discount_sheet.dart';
+import 'rental_period_sheet.dart';
 import 'quantity_sheet.dart';
 
 /// Counter mode: the products on screen, one tap each.
@@ -36,6 +39,15 @@ class _PosScreenState extends ConsumerState<PosScreen> {
   final _search = TextEditingController();
   String? _customerId;
   bool _saving = false;
+
+  /// Taken off the whole sale, in pesos. Clamped against the cart rather than
+  /// stored clamped, so removing an item and putting it back does not lose
+  /// the discount that was agreed.
+  double _discount = 0;
+
+  double get _discountApplied =>
+      _discount > _cart.total ? _cart.total : _discount;
+  double get _total => _cart.total - _discountApplied;
 
   @override
   void dispose() {
@@ -147,6 +159,8 @@ class _PosScreenState extends ConsumerState<PosScreen> {
           ? null
           : _CheckoutBar(
               cart: _cart,
+              discount: _discountApplied,
+              total: _total,
               customers: customers,
               customerId: _customerId,
               saving: _saving,
@@ -190,14 +204,18 @@ class _PosScreenState extends ConsumerState<PosScreen> {
     });
   }
 
-  /// The cart, for checking and correcting before it is recorded.
+  /// The cart, for checking and correcting before it is recorded. The
+  /// discount lives here too: the counter has no room for another control,
+  /// and the sheet is where the line items it applies to already are.
   Future<void> _review() async {
     await showModalBottomSheet<void>(
       context: context,
       isScrollControlled: true,
       builder: (_) => _CartSheet(
         cart: _cart,
+        discount: _discountApplied,
         onChanged: () => setState(() {}),
+        onDiscountChanged: (d) => setState(() => _discount = d),
       ),
     );
     if (mounted) setState(() {});
@@ -211,6 +229,7 @@ class _PosScreenState extends ConsumerState<PosScreen> {
             businessId: widget.businessId,
             customerId: _customerId,
             lines: _cart.toSaleLines(),
+            discount: _discountApplied,
           );
 
       ref.invalidate(salesProvider(widget.businessId));
@@ -220,16 +239,19 @@ class _PosScreenState extends ConsumerState<PosScreen> {
 
       if (!mounted) return;
       final sold = _cart.itemCount;
-      final total = _cart.total;
+      final total = _total;
       // Stays on the counter rather than popping: the next customer is already
       // waiting, and going back to a menu after every sale is the friction
       // this screen exists to remove.
       setState(() {
         _cart.clear();
         _customerId = null;
+        _discount = 0;
         _saving = false;
       });
-      showToast(context, 'Recorded $sold item${sold == 1 ? '' : 's'} · '
+      showToast(
+          context,
+          'Recorded $sold item${sold == 1 ? '' : 's'} · '
           '${formatPhp(total)}');
     } on StateError catch (e) {
       if (!mounted) return;
@@ -368,8 +390,7 @@ class _ProductTile extends StatelessWidget {
                         textAlign: TextAlign.right,
                         style: context.text.bodySmall?.copyWith(
                           color: low && !selected ? t.warning : quiet,
-                          fontWeight:
-                              low ? FontWeight.w700 : FontWeight.w400,
+                          fontWeight: low ? FontWeight.w700 : FontWeight.w400,
                         ),
                       ),
                     ),
@@ -387,6 +408,8 @@ class _ProductTile extends StatelessWidget {
 class _CheckoutBar extends StatelessWidget {
   const _CheckoutBar({
     required this.cart,
+    required this.discount,
+    required this.total,
     required this.customers,
     required this.customerId,
     required this.saving,
@@ -396,6 +419,8 @@ class _CheckoutBar extends StatelessWidget {
   });
 
   final SaleCart cart;
+  final double discount;
+  final double total;
   final List<Customer> customers;
   final String? customerId;
   final bool saving;
@@ -440,29 +465,37 @@ class _CheckoutBar extends StatelessWidget {
               // and the owner still has to be able to check them.
               Flexible(
                 child: InkWell(
-                onTap: onReview,
-                borderRadius: BorderRadius.circular(Radii.sm),
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(
-                      horizontal: Gap.sm, vertical: 4),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.end,
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Text(
-                        '${cart.itemCount} item${cart.itemCount == 1 ? '' : 's'}',
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: context.text.bodySmall,
-                      ),
-                      Text(
-                        formatPhp(cart.total),
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: context.text.titleLarge?.copyWith(color: t.ink),
-                      ),
-                    ],
-                  ),
+                  onTap: onReview,
+                  borderRadius: BorderRadius.circular(Radii.sm),
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: Gap.sm, vertical: 4),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.end,
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text(
+                          discount > 0
+                              ? '${cart.itemCount} item'
+                                  '${cart.itemCount == 1 ? '' : 's'} · less '
+                                  '${formatPhp(discount)}'
+                              : '${cart.itemCount} item'
+                                  '${cart.itemCount == 1 ? '' : 's'}',
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: context.text.bodySmall?.copyWith(
+                            color: discount > 0 ? t.success : null,
+                          ),
+                        ),
+                        Text(
+                          formatPhp(total),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style:
+                              context.text.titleLarge?.copyWith(color: t.ink),
+                        ),
+                      ],
+                    ),
                   ),
                 ),
               ),
@@ -490,16 +523,54 @@ class _CheckoutBar extends StatelessWidget {
 
 /// The lines behind the total, for checking before recording.
 class _CartSheet extends StatefulWidget {
-  const _CartSheet({required this.cart, required this.onChanged});
+  const _CartSheet({
+    required this.cart,
+    required this.discount,
+    required this.onChanged,
+    required this.onDiscountChanged,
+  });
 
   final SaleCart cart;
+  final double discount;
   final VoidCallback onChanged;
+  final ValueChanged<double> onDiscountChanged;
 
   @override
   State<_CartSheet> createState() => _CartSheetState();
 }
 
 class _CartSheetState extends State<_CartSheet> {
+  late double _discount = widget.discount;
+
+  double get _applied =>
+      _discount > widget.cart.total ? widget.cart.total : _discount;
+
+  Future<void> _editDiscount() async {
+    final chosen = await askDiscount(
+      context,
+      subtotal: widget.cart.total,
+      current: _applied,
+    );
+    if (chosen == null || !mounted) return;
+    setState(() => _discount = chosen);
+    widget.onDiscountChanged(chosen);
+  }
+
+  Future<void> _editDays(CartLine line) async {
+    final from = line.startsAt;
+    final to = line.endsAt;
+    final chosen = await askRentalPeriod(
+      context,
+      productName: line.product.name,
+      current: from != null && to != null
+          ? DateTimeRange(start: from, end: to)
+          : null,
+    );
+    if (chosen == null || !mounted) return;
+    setState(() => widget.cart.setPeriod(line, chosen.start, chosen.end));
+    widget.onChanged();
+  }
+
   @override
   Widget build(BuildContext context) {
     final t = context.t;
@@ -532,15 +603,52 @@ class _CartSheetState extends State<_CartSheet> {
                                     ?.copyWith(color: t.ink),
                               ),
                               Text(
-                                '${line.qty} × ${formatPhp(line.product.price)}',
+                                line.isRental
+                                    ? '${line.qty} × '
+                                        '${formatPhp(line.product.price)} a day'
+                                        ' × ${line.days} '
+                                        '${line.days == 1 ? 'day' : 'days'}'
+                                    : '${line.qty} × '
+                                        '${formatPhp(line.product.price)}',
                                 style: context.text.bodySmall,
                               ),
+                              // The counter has to be able to say how long
+                              // something is out for. Without this a rental
+                              // booked here is always one day, which is the
+                              // wrong money and the wrong due date.
+                              if (line.isRental)
+                                InkWell(
+                                  onTap: () => _editDays(line),
+                                  borderRadius: BorderRadius.circular(Radii.sm),
+                                  child: Padding(
+                                    padding:
+                                        const EdgeInsets.symmetric(vertical: 3),
+                                    child: Row(
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: [
+                                        Icon(Icons.calendar_month_outlined,
+                                            size: 14, color: t.accent),
+                                        Gap.w4,
+                                        Text(
+                                          line.startsAt == null
+                                              ? 'Set the dates'
+                                              : '${formatDay(line.startsAt!)}'
+                                                  ' → '
+                                                  '${formatDay(line.endsAt!)}',
+                                          style: context.text.labelSmall
+                                              ?.copyWith(color: t.accent),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                ),
                             ],
                           ),
                         ),
                         Text(
                           formatPhp(line.subtotal),
-                          style: context.text.bodyMedium?.copyWith(color: t.ink),
+                          style:
+                              context.text.bodyMedium?.copyWith(color: t.ink),
                         ),
                         IconButton(
                           icon: const Icon(Icons.delete_outline, size: 18),
@@ -557,17 +665,44 @@ class _CartSheetState extends State<_CartSheet> {
             ),
           ),
           Divider(color: t.line),
+          if (_applied > 0) ...[
+            Row(
+              children: [
+                Text('Subtotal', style: context.text.bodySmall),
+                const Spacer(),
+                Text(formatPhp(cart.total), style: context.text.bodySmall),
+              ],
+            ),
+            Row(
+              children: [
+                Text('Discount',
+                    style: context.text.bodySmall?.copyWith(color: t.success)),
+                const Spacer(),
+                Text('- ${formatPhp(_applied)}',
+                    style: context.text.bodySmall?.copyWith(color: t.success)),
+              ],
+            ),
+            Gap.h4,
+          ],
           Row(
             children: [
               Text('Total', style: context.text.bodyMedium),
               const Spacer(),
               Text(
-                formatPhp(cart.total),
+                formatPhp(cart.total - _applied),
                 style: context.text.titleLarge?.copyWith(color: t.ink),
               ),
             ],
           ),
-          Gap.h16,
+          Align(
+            alignment: Alignment.centerLeft,
+            child: TextButton.icon(
+              onPressed: cart.isEmpty ? null : _editDiscount,
+              icon: const Icon(Icons.sell_outlined, size: 18),
+              label: Text(_applied > 0 ? 'Change discount' : 'Add discount'),
+            ),
+          ),
+          Gap.h8,
           FilledButton(
             onPressed: () => Navigator.of(context).pop(),
             child: const Text('Back to counter'),

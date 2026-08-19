@@ -28,6 +28,7 @@ import 'features/refunds/refunds_screen.dart';
 import 'features/reports/reports_screen.dart';
 import 'features/sales/new_sale_screen.dart';
 import 'features/sales/pos_screen.dart';
+import 'features/sales/rentals_out_screen.dart';
 import 'features/sales/sales_screen.dart';
 import 'features/settings/settings_screen.dart';
 import 'features/shell/business_shell_screen.dart';
@@ -195,6 +196,15 @@ final goRouterProvider = Provider<GoRouter>((ref) {
                             prefill:
                                 prefill is RecordSaleCommand ? prefill : null,
                           );
+                        },
+                      ),
+                      GoRoute(
+                        path: 'rentals',
+                        parentNavigatorKey: rootNavigatorKey,
+                        name: 'business_rentals_out',
+                        builder: (context, state) {
+                          final id = state.pathParameters['businessId']!;
+                          return RentalsOutScreen(businessId: id);
                         },
                       ),
                       GoRoute(

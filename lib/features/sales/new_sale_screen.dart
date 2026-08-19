@@ -3,12 +3,15 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../core/dates.dart';
 import '../../core/money.dart';
 import '../../core/sellora_ui.dart';
 import '../../data/models/entities.dart';
 import '../../data/quick_entry/quick_command.dart';
 import '../../data/sales/sale_cart.dart';
 import '../../providers.dart';
+import 'discount_sheet.dart';
+import 'rental_period_sheet.dart';
 import 'quantity_sheet.dart';
 
 class NewSaleScreen extends ConsumerStatefulWidget {
@@ -41,7 +44,14 @@ class _NewSaleScreenState extends ConsumerState<NewSaleScreen> {
     _customerId = prefill.customer?.id;
   }
 
-  double get _total => _cart.total;
+  /// Taken off the sale, in pesos. Clamped down if the cart shrinks below it,
+  /// so a discount entered against a bigger cart can never exceed what is
+  /// left.
+  double _discount = 0;
+
+  double get _subtotal => _cart.total;
+  double get _discountApplied => _discount > _subtotal ? _subtotal : _discount;
+  double get _total => _subtotal - _discountApplied;
   int get _itemCount => _cart.itemCount;
 
   @override
@@ -93,18 +103,19 @@ class _NewSaleScreenState extends ConsumerState<NewSaleScreen> {
                           ),
                         ),
                         ..._cart.lines.map(
-                              (line) => Padding(
-                                padding: const EdgeInsets.only(bottom: Gap.sm),
-                                child: _CartCard(
-                                  line: line,
-                                  onDecrement: () => _changeQty(line, -1),
-                                  onIncrement: () => _changeQty(line, 1),
-                                  onRemove: () =>
-                                      setState(() => _cart.remove(line)),
-                                  onEditQty: () => _editQty(line),
-                                ),
-                              ),
+                          (line) => Padding(
+                            padding: const EdgeInsets.only(bottom: Gap.sm),
+                            child: _CartCard(
+                              line: line,
+                              onDecrement: () => _changeQty(line, -1),
+                              onIncrement: () => _changeQty(line, 1),
+                              onRemove: () =>
+                                  setState(() => _cart.remove(line)),
+                              onEditQty: () => _editQty(line),
+                              onEditDays: () => _editDays(line),
                             ),
+                          ),
+                        ),
                         Gap.h8,
                         OutlinedButton.icon(
                           onPressed: () => _pickProduct(products),
@@ -128,6 +139,28 @@ class _NewSaleScreenState extends ConsumerState<NewSaleScreen> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
+                      if (_discountApplied > 0) ...[
+                        Row(
+                          children: [
+                            Text('Subtotal', style: context.text.bodySmall),
+                            const Spacer(),
+                            Text(formatPhp(_subtotal),
+                                style: context.text.bodySmall),
+                          ],
+                        ),
+                        Row(
+                          children: [
+                            Text('Discount',
+                                style: context.text.bodySmall
+                                    ?.copyWith(color: t.success)),
+                            const Spacer(),
+                            Text('- ${formatPhp(_discountApplied)}',
+                                style: context.text.bodySmall
+                                    ?.copyWith(color: t.success)),
+                          ],
+                        ),
+                        Gap.h4,
+                      ],
                       Row(
                         children: [
                           Text('Total', style: context.text.bodyMedium),
@@ -136,7 +169,22 @@ class _NewSaleScreenState extends ConsumerState<NewSaleScreen> {
                               style: context.text.headlineSmall),
                         ],
                       ),
-                      Gap.h12,
+                      Gap.h4,
+                      // Left of the total rather than buried in a menu: a
+                      // discount is agreed while the customer is standing
+                      // there, not remembered afterwards.
+                      Align(
+                        alignment: Alignment.centerLeft,
+                        child: TextButton.icon(
+                          onPressed:
+                              (_saving || _cart.isEmpty) ? null : _editDiscount,
+                          icon: const Icon(Icons.sell_outlined, size: 18),
+                          label: Text(_discountApplied > 0
+                              ? 'Change discount'
+                              : 'Add discount'),
+                        ),
+                      ),
+                      Gap.h4,
                       FilledButton(
                         onPressed: (_saving || _cart.isEmpty) ? null : _submit,
                         child: _saving
@@ -191,6 +239,30 @@ class _NewSaleScreenState extends ConsumerState<NewSaleScreen> {
     setState(() => _cart.setQuantity(line, chosen));
   }
 
+  Future<void> _editDiscount() async {
+    final chosen = await askDiscount(
+      context,
+      subtotal: _subtotal,
+      current: _discountApplied,
+    );
+    if (chosen == null || !mounted) return;
+    setState(() => _discount = chosen);
+  }
+
+  Future<void> _editDays(CartLine line) async {
+    final from = line.startsAt;
+    final to = line.endsAt;
+    final chosen = await askRentalPeriod(
+      context,
+      productName: line.product.name,
+      current: from != null && to != null
+          ? DateTimeRange(start: from, end: to)
+          : null,
+    );
+    if (chosen == null || !mounted) return;
+    setState(() => _cart.setPeriod(line, chosen.start, chosen.end));
+  }
+
   void _changeQty(CartLine line, int delta) {
     final next = line.qty + delta;
     if (next < 1) return;
@@ -206,7 +278,14 @@ class _NewSaleScreenState extends ConsumerState<NewSaleScreen> {
       message: 'Remove all $_itemCount items from this sale?',
       confirmLabel: 'Clear',
     );
-    if (confirmed && mounted) setState(_cart.clear);
+    // The discount goes with it: it was agreed against these items, and
+    // leaving it behind would silently apply it to whatever comes next.
+    if (confirmed && mounted) {
+      setState(() {
+        _cart.clear();
+        _discount = 0;
+      });
+    }
   }
 
   Future<void> _pickProduct(List<Product> products) async {
@@ -246,6 +325,7 @@ class _NewSaleScreenState extends ConsumerState<NewSaleScreen> {
             businessId: widget.businessId,
             customerId: _customerId,
             lines: _cart.toSaleLines(),
+            discount: _discountApplied,
           );
 
       ref.invalidate(salesProvider(widget.businessId));
@@ -274,6 +354,7 @@ class _CartCard extends StatelessWidget {
     required this.onIncrement,
     required this.onRemove,
     required this.onEditQty,
+    required this.onEditDays,
   });
 
   final CartLine line;
@@ -281,6 +362,7 @@ class _CartCard extends StatelessWidget {
   final VoidCallback onIncrement;
   final VoidCallback onRemove;
   final VoidCallback onEditQty;
+  final VoidCallback onEditDays;
 
   @override
   Widget build(BuildContext context) {
@@ -302,9 +384,44 @@ class _CartCard extends StatelessWidget {
                   overflow: TextOverflow.ellipsis,
                 ),
                 Text(
-                  '${formatPhp(line.product.price)} each · ${formatPhp(line.subtotal)}',
+                  line.isRental
+                      ? '${formatPhp(line.product.price)} a day · '
+                          '${line.days} ${line.days == 1 ? 'day' : 'days'} · '
+                          '${formatPhp(line.subtotal)}'
+                      : '${formatPhp(line.product.price)} each · '
+                          '${formatPhp(line.subtotal)}',
                   style: context.text.bodySmall,
                 ),
+                if (line.isRental) ...[
+                  Gap.h4,
+                  // Only rentals get this. Putting a day count on a sold line
+                  // would invite someone to change it, and a sold thing is not
+                  // out for a period.
+                  InkWell(
+                    onTap: onEditDays,
+                    borderRadius: BorderRadius.circular(Radii.sm),
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: Gap.sm, vertical: 3),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(Icons.calendar_month_outlined,
+                              size: 14, color: t.accent),
+                          Gap.w4,
+                          Text(
+                            line.startsAt == null
+                                ? 'Set the dates'
+                                : '${formatDay(line.startsAt!)} → '
+                                    '${formatDay(line.endsAt!)}',
+                            style: context.text.labelSmall
+                                ?.copyWith(color: t.accent),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ],
                 if (atMax)
                   Text(
                     'All ${line.max} ${line.product.unit} in cart',
