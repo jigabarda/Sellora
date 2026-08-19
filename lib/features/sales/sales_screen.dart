@@ -176,12 +176,32 @@ class SalesScaffold extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     return Scaffold(
       body: SalesScreen(businessId: businessId),
-      floatingActionButton: FloatingActionButton.extended(
-        // Shell branches stay alive together, so the default hero tag collides.
-        heroTag: 'fab_sales',
-        onPressed: () => context.push('/business/$businessId/sales/new'),
-        icon: const Icon(Icons.add, size: 20),
-        label: const Text('New sale'),
+      floatingActionButton: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.end,
+        children: [
+          // Counter mode sits above the form, smaller and quieter. It is the
+          // faster way to sell and will be the one reached for all day, but it
+          // is also the newer one — leading with the familiar button and
+          // letting this be discovered costs nothing, and demoting the form
+          // before anyone has tried the counter would cost trust.
+          FloatingActionButton.small(
+            heroTag: 'fab_counter',
+            tooltip: 'Counter mode',
+            onPressed: () =>
+                context.push('/business/$businessId/sales/counter'),
+            child: const Icon(Icons.grid_view_rounded, size: 20),
+          ),
+          Gap.h12,
+          FloatingActionButton.extended(
+            // Shell branches stay alive together, so the default hero tag
+            // collides.
+            heroTag: 'fab_sales',
+            onPressed: () => context.push('/business/$businessId/sales/new'),
+            icon: const Icon(Icons.add, size: 20),
+            label: const Text('New sale'),
+          ),
+        ],
       ),
     );
   }
