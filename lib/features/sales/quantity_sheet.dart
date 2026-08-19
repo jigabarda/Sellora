@@ -16,6 +16,8 @@ Future<int?> askQuantity(
   required String productName,
   required int current,
   int? max,
+  String title = 'How many?',
+  String unit = 'item',
 }) {
   return showModalBottomSheet<int>(
     context: context,
@@ -24,6 +26,8 @@ Future<int?> askQuantity(
       productName: productName,
       current: current,
       max: max,
+      title: title,
+      unit: unit,
     ),
   );
 }
@@ -33,10 +37,17 @@ class _QuantitySheet extends StatefulWidget {
     required this.productName,
     required this.current,
     required this.max,
+    required this.title,
+    required this.unit,
   });
 
   final String productName;
   final int current;
+  final String title;
+
+  /// What is being counted. Days need different round numbers from chairs —
+  /// nobody rents anything for a hundred days.
+  final String unit;
 
   /// Stock ceiling, or null when the product does not track stock.
   final int? max;
@@ -53,7 +64,8 @@ class _QuantitySheetState extends State<_QuantitySheet> {
   /// Round numbers someone actually orders by. Anything above the stock
   /// ceiling is dropped rather than shown disabled — a chip you cannot press
   /// is just a question you have to answer twice.
-  static const _shortcuts = [5, 10, 20, 50, 100];
+  static const _itemShortcuts = [5, 10, 20, 50, 100];
+  static const _dayShortcuts = [1, 2, 3, 7, 14];
 
   @override
   void initState() {
@@ -79,7 +91,7 @@ class _QuantitySheetState extends State<_QuantitySheet> {
   void _submit() {
     final value = _parsed;
     if (value == null || value < 1) {
-      setState(() => _error = 'Enter how many, at least 1');
+      setState(() => _error = 'Enter at least one ${widget.unit}');
       return;
     }
     if (widget.max != null && value > widget.max!) {
@@ -93,9 +105,10 @@ class _QuantitySheetState extends State<_QuantitySheet> {
   @override
   Widget build(BuildContext context) {
     final t = context.t;
-    final shortcuts = _shortcuts
-        .where((n) => widget.max == null || n <= widget.max!)
-        .toList(growable: false);
+    final shortcuts =
+        (widget.unit == 'day' ? _dayShortcuts : _itemShortcuts)
+            .where((n) => widget.max == null || n <= widget.max!)
+            .toList(growable: false);
 
     return Padding(
       padding: EdgeInsets.fromLTRB(
@@ -108,7 +121,7 @@ class _QuantitySheetState extends State<_QuantitySheet> {
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Text('How many?', style: context.text.titleMedium),
+          Text(widget.title, style: context.text.titleMedium),
           Gap.h4,
           Text(
             widget.max == null
@@ -156,7 +169,10 @@ class _QuantitySheetState extends State<_QuantitySheet> {
             ),
           ],
           Gap.h16,
-          FilledButton(onPressed: _submit, child: const Text('Set quantity')),
+          FilledButton(
+            onPressed: _submit,
+            child: Text(widget.unit == 'day' ? 'Set days' : 'Set quantity'),
+          ),
         ],
       ),
     );

@@ -102,6 +102,7 @@ class _NewSaleScreenState extends ConsumerState<NewSaleScreen> {
                                   onRemove: () =>
                                       setState(() => _cart.remove(line)),
                                   onEditQty: () => _editQty(line),
+                                  onEditDays: () => _editDays(line),
                                 ),
                               ),
                             ),
@@ -191,6 +192,18 @@ class _NewSaleScreenState extends ConsumerState<NewSaleScreen> {
     setState(() => _cart.setQuantity(line, chosen));
   }
 
+  Future<void> _editDays(CartLine line) async {
+    final chosen = await askQuantity(
+      context,
+      productName: line.product.name,
+      current: line.days,
+      title: 'For how many days?',
+      unit: 'day',
+    );
+    if (chosen == null || !mounted) return;
+    setState(() => _cart.setDays(line, chosen));
+  }
+
   void _changeQty(CartLine line, int delta) {
     final next = line.qty + delta;
     if (next < 1) return;
@@ -274,6 +287,7 @@ class _CartCard extends StatelessWidget {
     required this.onIncrement,
     required this.onRemove,
     required this.onEditQty,
+    required this.onEditDays,
   });
 
   final CartLine line;
@@ -281,6 +295,7 @@ class _CartCard extends StatelessWidget {
   final VoidCallback onIncrement;
   final VoidCallback onRemove;
   final VoidCallback onEditQty;
+  final VoidCallback onEditDays;
 
   @override
   Widget build(BuildContext context) {
@@ -302,9 +317,41 @@ class _CartCard extends StatelessWidget {
                   overflow: TextOverflow.ellipsis,
                 ),
                 Text(
-                  '${formatPhp(line.product.price)} each · ${formatPhp(line.subtotal)}',
+                  line.isRental
+                      ? '${formatPhp(line.product.price)} a day · '
+                          '${line.days} ${line.days == 1 ? 'day' : 'days'} · '
+                          '${formatPhp(line.subtotal)}'
+                      : '${formatPhp(line.product.price)} each · '
+                          '${formatPhp(line.subtotal)}',
                   style: context.text.bodySmall,
                 ),
+                if (line.isRental) ...[
+                  Gap.h4,
+                  // Only rentals get this. Putting a day count on a sold line
+                  // would invite someone to change it, and a sold thing is not
+                  // out for a period.
+                  InkWell(
+                    onTap: onEditDays,
+                    borderRadius: BorderRadius.circular(Radii.sm),
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: Gap.sm, vertical: 3),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(Icons.event_outlined, size: 14, color: t.accent),
+                          Gap.w4,
+                          Text(
+                            'For ${line.days} '
+                            '${line.days == 1 ? 'day' : 'days'} — change',
+                            style: context.text.labelSmall
+                                ?.copyWith(color: t.accent),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ],
                 if (atMax)
                   Text(
                     'All ${line.max} ${line.product.unit} in cart',

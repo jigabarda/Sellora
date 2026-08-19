@@ -13,6 +13,7 @@ Product _product({
   double price = 25,
   int stock = 10,
   bool trackStock = true,
+  bool rental = false,
 }) =>
     Product(
       id: id,
@@ -25,6 +26,7 @@ Product _product({
       price: price,
       stock: stock,
       trackStock: trackStock,
+      rental: rental,
       active: true,
       createdAt: DateTime(2026),
     );
@@ -63,7 +65,8 @@ void main() {
   });
 
   test('an untracked product has no ceiling', () {
-    final cart = SaleCart()..add(_product(trackStock: false, stock: 0), qty: 99);
+    final cart = SaleCart()
+      ..add(_product(trackStock: false, stock: 0), qty: 99);
     expect(cart.lines.single.qty, 99);
     expect(cart.add(_product(trackStock: false, stock: 0)), isTrue);
     expect(cart.lines.single.qty, 100);
@@ -110,6 +113,50 @@ void main() {
     expect(lines.single.qty, 2);
     expect(lines.single.unitPrice, 25);
     expect(lines.single.name, 'Purified Refill');
+  });
+
+  test('a rental line multiplies by the days agreed', () {
+    // Twenty chairs at ten pesos for three days is six hundred, not two
+    // hundred. The whole rental feature is this one multiplication.
+    final cart = SaleCart()
+      ..add(_product(price: 10, stock: 50, rental: true), qty: 20);
+    cart.setDays(cart.lines.single, 3);
+
+    expect(cart.lines.single.subtotal, 600);
+    expect(cart.total, 600);
+    expect(cart.toSaleLines().single.days, 3);
+  });
+
+  test('a line starts at one day, so a plain sale is unaffected', () {
+    final cart = SaleCart()..add(_product(price: 25), qty: 2);
+    expect(cart.lines.single.days, 1);
+    expect(cart.total, 50);
+    expect(cart.toSaleLines().single.days, 1);
+  });
+
+  test('days below one are pulled back to one', () {
+    // Nothing is rented for zero days, and a zero would zero the money.
+    final cart = SaleCart()..add(_product(rental: true), qty: 1);
+    cart.setDays(cart.lines.single, 0);
+    expect(cart.lines.single.days, 1);
+  });
+
+  test('the cart knows whether anything on it is a rental', () {
+    final cart = SaleCart()..add(_product(id: 'a'));
+    expect(cart.hasRental, isFalse);
+
+    cart.add(_product(id: 'b', rental: true));
+    expect(cart.hasRental, isTrue);
+  });
+
+  test('days survive a quantity change', () {
+    final cart = SaleCart()
+      ..add(_product(price: 10, stock: 50, rental: true), qty: 5);
+    cart.setDays(cart.lines.single, 4);
+    cart.setQuantity(cart.lines.single, 10);
+
+    expect(cart.lines.single.days, 4);
+    expect(cart.total, 400);
   });
 
   test('clear empties everything', () {

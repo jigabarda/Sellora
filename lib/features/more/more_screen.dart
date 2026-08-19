@@ -19,6 +19,12 @@ class MoreScreen extends StatelessWidget {
             'Photograph your notebook and record what it says',
             _MoreTone.accent),
         _MoreItem(
+            'Out on rent',
+            Icons.event_repeat_outlined,
+            '/business/$businessId/sales/rentals',
+            'What is still with a customer, and taking it back',
+            _MoreTone.accent),
+        _MoreItem(
             'Customers',
             Icons.people_outline,
             '/business/$businessId/customers',

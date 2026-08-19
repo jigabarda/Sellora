@@ -229,7 +229,9 @@ class _PosScreenState extends ConsumerState<PosScreen> {
         _customerId = null;
         _saving = false;
       });
-      showToast(context, 'Recorded $sold item${sold == 1 ? '' : 's'} · '
+      showToast(
+          context,
+          'Recorded $sold item${sold == 1 ? '' : 's'} · '
           '${formatPhp(total)}');
     } on StateError catch (e) {
       if (!mounted) return;
@@ -368,8 +370,7 @@ class _ProductTile extends StatelessWidget {
                         textAlign: TextAlign.right,
                         style: context.text.bodySmall?.copyWith(
                           color: low && !selected ? t.warning : quiet,
-                          fontWeight:
-                              low ? FontWeight.w700 : FontWeight.w400,
+                          fontWeight: low ? FontWeight.w700 : FontWeight.w400,
                         ),
                       ),
                     ),
@@ -440,29 +441,30 @@ class _CheckoutBar extends StatelessWidget {
               // and the owner still has to be able to check them.
               Flexible(
                 child: InkWell(
-                onTap: onReview,
-                borderRadius: BorderRadius.circular(Radii.sm),
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(
-                      horizontal: Gap.sm, vertical: 4),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.end,
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Text(
-                        '${cart.itemCount} item${cart.itemCount == 1 ? '' : 's'}',
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: context.text.bodySmall,
-                      ),
-                      Text(
-                        formatPhp(cart.total),
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: context.text.titleLarge?.copyWith(color: t.ink),
-                      ),
-                    ],
-                  ),
+                  onTap: onReview,
+                  borderRadius: BorderRadius.circular(Radii.sm),
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: Gap.sm, vertical: 4),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.end,
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text(
+                          '${cart.itemCount} item${cart.itemCount == 1 ? '' : 's'}',
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: context.text.bodySmall,
+                        ),
+                        Text(
+                          formatPhp(cart.total),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style:
+                              context.text.titleLarge?.copyWith(color: t.ink),
+                        ),
+                      ],
+                    ),
                   ),
                 ),
               ),
@@ -500,6 +502,19 @@ class _CartSheet extends StatefulWidget {
 }
 
 class _CartSheetState extends State<_CartSheet> {
+  Future<void> _editDays(CartLine line) async {
+    final chosen = await askQuantity(
+      context,
+      productName: line.product.name,
+      current: line.days,
+      title: 'For how many days?',
+      unit: 'day',
+    );
+    if (chosen == null || !mounted) return;
+    setState(() => widget.cart.setDays(line, chosen));
+    widget.onChanged();
+  }
+
   @override
   Widget build(BuildContext context) {
     final t = context.t;
@@ -532,15 +547,48 @@ class _CartSheetState extends State<_CartSheet> {
                                     ?.copyWith(color: t.ink),
                               ),
                               Text(
-                                '${line.qty} × ${formatPhp(line.product.price)}',
+                                line.isRental
+                                    ? '${line.qty} × '
+                                        '${formatPhp(line.product.price)} a day'
+                                    : '${line.qty} × '
+                                        '${formatPhp(line.product.price)}',
                                 style: context.text.bodySmall,
                               ),
+                              // The counter has to be able to say how long
+                              // something is out for. Without this a rental
+                              // booked here is always one day, which is the
+                              // wrong money and the wrong due date.
+                              if (line.isRental)
+                                InkWell(
+                                  onTap: () => _editDays(line),
+                                  borderRadius: BorderRadius.circular(Radii.sm),
+                                  child: Padding(
+                                    padding:
+                                        const EdgeInsets.symmetric(vertical: 3),
+                                    child: Row(
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: [
+                                        Icon(Icons.event_outlined,
+                                            size: 14, color: t.accent),
+                                        Gap.w4,
+                                        Text(
+                                          'For ${line.days} '
+                                          '${line.days == 1 ? 'day' : 'days'}'
+                                          ' — change',
+                                          style: context.text.labelSmall
+                                              ?.copyWith(color: t.accent),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                ),
                             ],
                           ),
                         ),
                         Text(
                           formatPhp(line.subtotal),
-                          style: context.text.bodyMedium?.copyWith(color: t.ink),
+                          style:
+                              context.text.bodyMedium?.copyWith(color: t.ink),
                         ),
                         IconButton(
                           icon: const Icon(Icons.delete_outline, size: 18),
