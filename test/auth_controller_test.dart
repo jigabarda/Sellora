@@ -1,3 +1,6 @@
+import 'dart:convert';
+
+import 'package:crypto/crypto.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:sellora_mobile/data/auth/auth_controller.dart';
 import 'package:sellora_mobile/data/backup/backup_service.dart';
@@ -147,6 +150,135 @@ void main() {
       await relaunched.restoreSession();
 
       expect(relaunched.state.userId, id);
+    });
+  });
+
+  group('password stretching', () {
+    /// Writes a credential in the pre-stretching format: sha256(salt+secret).
+    /// This is what every account made before this change actually holds, and
+    /// the only honest way to test that they keep working.
+    Future<void> writeLegacyPassword(String password) async {
+      const salt = 'legacy-salt';
+      final digest = sha256.convert(utf8.encode('$salt$password')).toString();
+      await db.update(
+        'users',
+        {'salt': salt, 'password_hash': digest},
+        where: 'id = ?',
+        whereArgs: [auth.state.userId],
+      );
+    }
+
+    Future<Map<String, Object?>> userRow() async =>
+        (await db.query('users', where: 'username = ?', whereArgs: ['owner']))
+            .single;
+
+    test('a new account is stored stretched, not as a bare digest', () async {
+      final stored = (await userRow())['password_hash']! as String;
+
+      expect(stored, startsWith('pbkdf2\$'));
+      expect(
+        stored,
+        isNot(sha256
+            .convert(utf8.encode('${(await userRow())['salt']}secret123'))
+            .toString()),
+        reason: 'a bare sha256 digest would mean nothing changed',
+      );
+    });
+
+    test('an account made before stretching can still sign in', () async {
+      // The one thing that must not break. Locking people out of their own
+      // records to improve a hash would be worse than the weak hash.
+      await writeLegacyPassword('secret123');
+      await auth.logout();
+
+      await auth.login(username: 'owner', password: 'secret123');
+      expect(auth.isLoggedIn, isTrue);
+    });
+
+    test('signing in upgrades an old credential in passing', () async {
+      await writeLegacyPassword('secret123');
+      await auth.logout();
+      expect((await userRow())['password_hash'], isNot(startsWith('pbkdf2\$')));
+
+      await auth.login(username: 'owner', password: 'secret123');
+
+      final after = await userRow();
+      expect(after['password_hash'], startsWith('pbkdf2\$'));
+      expect(after['salt'], isNot('legacy-salt'),
+          reason: 'a rehash gets a fresh salt, like every other write');
+
+      // And the same password keeps working against the upgraded row.
+      await auth.logout();
+      await auth.login(username: 'owner', password: 'secret123');
+      expect(auth.isLoggedIn, isTrue);
+    });
+
+    test('a wrong password against an old credential is still refused',
+        () async {
+      await writeLegacyPassword('secret123');
+      await auth.logout();
+
+      await expectLater(
+        auth.login(username: 'owner', password: 'wrongpassword'),
+        throwsA(isA<AuthException>()),
+      );
+      // And a failed attempt does not quietly rewrite the row.
+      expect((await userRow())['password_hash'], isNot(startsWith('pbkdf2\$')));
+    });
+
+    test('the stored value carries its own work factor', () async {
+      // So the count can be raised later without stranding today's rows.
+      final stored = (await userRow())['password_hash']! as String;
+      final parts = stored.split('\$');
+
+      expect(parts, hasLength(3));
+      expect(int.parse(parts[1]), greaterThanOrEqualTo(100000));
+      expect(parts[2], hasLength(64), reason: '32 bytes as hex');
+    });
+
+    test('the same password under a different salt gives a different hash',
+        () async {
+      await auth.register(
+        name: 'Second',
+        username: 'second',
+        password: 'secret123',
+      );
+
+      final rows = await db.query('users', orderBy: 'created_at ASC');
+      final first = rows.firstWhere((r) => r['username'] == 'owner');
+      final second = rows.firstWhere((r) => r['username'] == 'second');
+
+      expect(first['salt'], isNot(second['salt']));
+      expect(first['password_hash'], isNot(second['password_hash']),
+          reason: 'identical passwords must not collide across accounts');
+    });
+
+    test('changing a password writes the stretched format', () async {
+      await auth.changePassword(
+        currentPassword: 'secret123',
+        newPassword: 'brandnew456',
+      );
+
+      expect((await userRow())['password_hash'], startsWith('pbkdf2\$'));
+      await auth.logout();
+      await auth.login(username: 'owner', password: 'brandnew456');
+      expect(auth.isLoggedIn, isTrue);
+    });
+
+    test('a recovery code is stretched too', () async {
+      final code = await auth.createRecoveryCode(password: 'secret123');
+      final stored = (await userRow())['recovery_hash']! as String;
+
+      expect(stored, startsWith('pbkdf2\$'));
+      // And still verifies, which is what the format change could have broken.
+      await auth.resetPasswordWithRecoveryCode(
+        username: 'owner',
+        code: code,
+        newPassword: 'brandnew456',
+      );
+      await auth.logout();
+      await auth.login(username: 'owner', password: 'brandnew456');
+      expect(auth.isLoggedIn, isTrue);
     });
   });
 
