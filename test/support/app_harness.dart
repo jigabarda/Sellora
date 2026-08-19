@@ -49,6 +49,9 @@ Future<AppHarness> bootApp(
   bool withData = true,
   Brightness brightness = Brightness.light,
   BrandPalette palette = BrandPalette.fallback,
+  /// Applied after the harness's own overrides, so a test can substitute a
+  /// platform-backed dependency such as the camera or the text recogniser.
+  List<Override> overrides = const [],
 }) async {
   const businessId = 'biz_seed';
   late final Database db;
@@ -102,6 +105,7 @@ Future<AppHarness> bootApp(
         authControllerProvider.overrideWith((ref) => auth),
         themeControllerProvider.overrideWith((ref) => themeController),
         brandPaletteProvider.overrideWith((ref) => paletteController),
+        ...overrides,
       ],
     );
   });

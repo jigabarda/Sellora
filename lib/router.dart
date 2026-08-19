@@ -18,6 +18,8 @@ import 'features/expenses/expenses_screen.dart';
 import 'features/home/home_screen.dart';
 import 'features/insights/insights_screen.dart';
 import 'features/inventory/inventory_screen.dart';
+import 'features/notebook_capture/notebook_capture_screen.dart';
+import 'features/notebook_capture/ocr_report_screen.dart';
 import 'features/quick_entry/quick_entry_screen.dart';
 import 'features/more/more_screen.dart';
 import 'features/products/product_form_screen.dart';
@@ -323,6 +325,28 @@ final goRouterProvider = Provider<GoRouter>((ref) {
               return QuickEntryScreen(businessId: id);
             },
           ),
+          GoRoute(
+            path: 'scan',
+            parentNavigatorKey: rootNavigatorKey,
+            name: 'business_notebook_capture',
+            builder: (context, state) {
+              final id = state.pathParameters['businessId']!;
+              return NotebookCaptureScreen(businessId: id);
+            },
+          ),
+          // Debug builds only. `ocrReportEnabled` is `kDebugMode`, a const
+          // false in release, so this route and the button that reaches it are
+          // tree shaken out of shipped builds.
+          if (ocrReportEnabled)
+            GoRoute(
+              path: 'scan/diagnose',
+              parentNavigatorKey: rootNavigatorKey,
+              name: 'business_ocr_report',
+              builder: (context, state) {
+                final id = state.pathParameters['businessId']!;
+                return OcrReportScreen(businessId: id);
+              },
+            ),
           GoRoute(
             path: 'insights',
             parentNavigatorKey: rootNavigatorKey,

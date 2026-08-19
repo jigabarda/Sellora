@@ -150,9 +150,45 @@ Backup & Restore) is the answer to that.
   isolation, transaction rollback, and the file validation paths.
 
 `share_plus` and `file_selector` are the only plugins added for this. Neither
-declares the `INTERNET` permission, so release builds still cannot reach the
-network. Verify with the merged manifest under
-`build/app/intermediates/packaged_manifests/release/` after changing plugins.
+declares the `INTERNET` permission. See [Keeping the network permission
+out](#keeping-the-network-permission-out) for how to check that after any
+plugin change — reading the plugin's own manifest is not enough.
+
+## Keeping the network permission out
+
+The release APK declares **no network permission**. That is the mechanism that
+makes non-negotiable 7 a fact about the artifact rather than a promise: without
+`INTERNET`, no dependency can transmit anything regardless of intent.
+
+**A plugin's own manifest does not tell you whether it stays that way.** When
+`google_mlkit_text_recognition` was added for Notebook Capture, neither it nor
+`google_mlkit_commons` declared a single permission — but ML Kit pulls
+`com.google.android.datatransport:transport-backend-cct`, a telemetry uploader,
+which declares `INTERNET` and `ACCESS_NETWORK_STATE`. It reached the merged
+manifest three levels down from anything visible in `pubspec.yaml`.
+
+So verify the **merged** manifest after adding or bumping any Android
+dependency:
+
+```
+$env:JAVA_HOME="C:\Program Files\Android\Android Studio\jbr"   # not on PATH
+cd android; .\gradlew.bat :app:processReleaseMainManifest
+grep uses-permission build/app/intermediates/merged_manifest/release/processReleaseMainManifest/AndroidManifest.xml
+```
+
+The only entry that should appear is
+`com.sellora.mobile.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION` — a signature-level
+permission the app defines for its own dynamic broadcast receivers, which grants
+nothing outward. Anything else is a regression.
+
+When a dependency drags one in, strip it in
+`android/app/src/release/AndroidManifest.xml` with `tools:node="remove"` rather
+than excluding the Gradle module, so the library's classes still resolve.
+Release only: `src/debug` and `src/profile` keep `INTERNET` because the Flutter
+tool needs it for hot reload, and those variants are never shipped.
+
+To find the culprit when one appears, read the blame report at
+`build/app/outputs/logs/manifest-merger-release-report.txt`.
 
 ## Settings
 
@@ -670,6 +706,56 @@ device. Run `seed_device_db.dart` first.
 It needed no schema change. The design document also records why an on-device or
 cloud LLM was rejected for now, so that decision does not get relitigated from
 scratch.
+
+## Notebook Capture
+
+Built. `lib/data/notebook/` holds the reader, `docs/NOTEBOOK_CAPTURE_DESIGN.md`
+the reasoning. Photograph a page of the paper notebook at
+`/business/:businessId/scan`, check what was read, record it.
+
+The thing to understand before changing anything here: **it does not try to read
+well, it tries to read in a way that adds up.** A ledger line carries its own
+checksum — `Nena 2 refill 50` proves itself against a ₱25 price — and the parser
+accepts a reading only when the arithmetic agrees with the price list. That does
+three jobs a better recogniser would not:
+
+- It settles ties the text cannot. `2 refill 50` is ambiguous between the ₱25
+  and ₱30 refills on name alone, and Quick Entry correctly declines it; the
+  amount decides.
+- It recovers dropped quantities by dividing the amount by the price.
+- It licenses a product shortlist below the normal matching threshold, because
+  nothing under that bar is accepted unless the figures vouch for it.
+
+Consequences worth keeping:
+
+- **Reading never writes**, as in Quick Entry. Recognition produces an editable
+  preview; the owner's tap on *Record* is the only thing that touches the
+  database. This is what makes an imperfect recogniser safe to ship.
+- **Reconciled lines start ticked, everything else starts unticked.** The owner
+  opting in to a doubtful line is a decision; the app doing it for them is a
+  guess wearing a decision's clothes.
+- **The catalogue price is recorded, never the number on the page.** A mismatch
+  is a question, not a discount.
+
+`rowsFromBlocks` in `text_recogniser.dart` is not incidental plumbing. ML Kit
+groups text into blocks, and a ledger's columns routinely land in three separate
+ones — read straight through, every line would arrive without its amount, which
+is the one signal the whole feature depends on. Rows are rebuilt geometrically,
+and a fragment is banded against the *previous* fragment rather than the row's
+mean, because handwriting sags across a page and a mean falls behind the drift.
+
+It needed no schema change; each selected line becomes an ordinary
+`recordSale` call. `google_mlkit_text_recognition` is the first dependency that
+tried to add a network permission — see [Keeping the network permission
+out](#keeping-the-network-permission-out), which is now mandatory reading before
+adding any Android dependency.
+
+**Unvalidated:** whether real handwriting reads well enough. The design fails
+safe — unreconciled lines are held back rather than guessed, so a poor
+recognition rate yields a tedious app rather than a wrong one — but tedious is
+still failure if it is most lines. Measuring it needs photographs of actual
+pages, and the recogniser sits behind a one-method interface so it can be
+swapped if the answer is bad.
 
 ## Immediate Next Best Work
 

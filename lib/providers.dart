@@ -1,4 +1,5 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:image_picker/image_picker.dart';
 import 'package:sqflite/sqflite.dart';
 
 import 'core/dates.dart';
@@ -7,6 +8,7 @@ import 'data/backup/backup_service.dart';
 import 'data/insights/insight.dart';
 import 'data/insights/insights_service.dart';
 import 'data/models/entities.dart';
+import 'data/notebook/text_recogniser.dart';
 import 'data/repositories/business_repository.dart';
 import 'data/repositories/category_repository.dart';
 import 'data/repositories/customer_repository.dart';
@@ -62,6 +64,36 @@ final insightsServiceProvider = Provider<InsightsService>(
 final backupServiceProvider = Provider<BackupService>(
   (ref) => BackupService(ref.watch(databaseProvider)),
 );
+
+/// Choosing a photo, behind a provider for the same reason the recogniser is:
+/// the capture flow has to be drivable in a test, and `ImagePicker` talks to a
+/// platform channel that does not exist there.
+typedef ImagePick = Future<String?> Function(ImageSource source);
+
+final imagePickerProvider = Provider<ImagePick>((ref) {
+  return (source) async {
+    final file = await ImagePicker().pickImage(
+      source: source,
+      // Downscaled before it reaches the recogniser. A 12-megapixel photo of a
+      // notebook page is slower to process and no more legible than this, and
+      // the phones this runs on do not have the memory to spare.
+      maxWidth: 2000,
+      imageQuality: 90,
+    );
+    return file?.path;
+  };
+});
+
+/// On-device text recognition for photographed ledger pages.
+///
+/// A provider so tests can substitute a recogniser that returns fixed text —
+/// the widget layer must be exercisable without a camera. Disposed with the
+/// scope so the native recogniser does not outlive the app's use of it.
+final textRecogniserProvider = Provider<TextRecogniser>((ref) {
+  final recogniser = MlKitTextRecogniser();
+  ref.onDispose(recogniser.dispose);
+  return recogniser;
+});
 
 final currentUserProvider = FutureProvider.autoDispose<LocalUser?>((ref) async {
   // Watched, not read: signing in or out has to re-resolve this.

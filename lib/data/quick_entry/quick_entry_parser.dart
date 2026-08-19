@@ -1,4 +1,5 @@
 import '../models/entities.dart';
+import '../text/fuzzy.dart' as fuzzy;
 import 'quick_command.dart';
 
 /// Turns a typed or spoken phrase into an intention, matched against the
@@ -87,61 +88,14 @@ class QuickEntryParser {
     return (customer: match, remaining: left);
   }
 
-  /// Highest-scoring candidate, or null when nothing clears the bar or two
-  /// candidates are too close to separate.
   T? _bestMatch<T>(
-      List<String> query, List<T> candidates, String Function(T) name) {
-    if (query.isEmpty || candidates.isEmpty) return null;
-
-    final scored = candidates
-        .map((c) => (item: c, score: _score(query, name(c))))
-        .where((s) => s.score >= _minimumScore)
-        .toList()
-      ..sort((a, b) => b.score.compareTo(a.score));
-
-    if (scored.isEmpty) return null;
-    // "refill" matches two products equally well. Guessing between them is how
-    // the wrong product ends up on a receipt, so decline instead.
-    if (scored.length > 1 && (scored[0].score - scored[1].score) < _tieMargin) {
-      return null;
-    }
-    return scored.first.item;
-  }
-
-  /// Fraction of the query that appears in the target, weighted by token
-  /// length.
-  ///
-  /// Token-subset rather than edit distance over whole strings: "purified
-  /// refill" has to match "Purified 5-Gallon Refill", and whole-string distance
-  /// scores that pair badly because of the words in between. The length
-  /// weighting stops a stray "5" from carrying a match on its own.
-  double _score(List<String> query, String target) {
-    final targetTokens = _tokenise(target);
-    if (targetTokens.isEmpty) return 0;
-
-    var matched = 0.0;
-    var total = 0.0;
-    for (final q in query) {
-      final weight = q.length.toDouble();
-      total += weight;
-      if (targetTokens.any((t) => _tokenMatches(q, t))) matched += weight;
-    }
-    return total == 0 ? 0 : matched / total;
-  }
-
-  bool _tokenMatches(String query, String target) {
-    if (query == target) return true;
-    // Prefixes only from three characters, so "5" does not match "5-Gallon"
-    // and "a" does not match everything.
-    if (query.length >= 3 && target.startsWith(query)) return true;
-    if (target.length >= 3 && query.startsWith(target)) return true;
-    return false;
-  }
+          List<String> query, List<T> candidates, String Function(T) name) =>
+      fuzzy.bestMatch(query, candidates, name);
 
   String? _matchCategory(List<String> words) {
     for (final entry in _categorySynonyms.entries) {
       for (final word in words) {
-        if (entry.value.any((s) => _tokenMatches(word, s))) return entry.key;
+        if (entry.value.any((s) => fuzzy.tokenMatches(word, s))) return entry.key;
       }
     }
     return null;
@@ -172,20 +126,8 @@ class QuickEntryParser {
     return null;
   }
 
-  List<String> _tokenise(String input) => input
-      .toLowerCase()
-      .replaceAll(RegExp(r'[^a-z0-9\s.]'), ' ')
-      .split(RegExp(r'\s+'))
-      .where((t) => t.isNotEmpty)
-      .toList();
+  List<String> _tokenise(String input) => fuzzy.tokenise(input);
 }
-
-/// A query token must account for this much of the utterance before a match is
-/// believed. Below it the parser declines rather than guessing.
-const _minimumScore = 0.6;
-
-/// Two candidates closer than this are treated as indistinguishable.
-const _tieMargin = 0.15;
 
 const _customerMarkers = {'kay', 'for', 'para', 'sa'};
 

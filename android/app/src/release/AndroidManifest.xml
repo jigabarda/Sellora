@@ -1,0 +1,28 @@
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
+
+    <!-- Sellora ships with no network permission. That is not a preference; it
+         is the mechanism that makes "your records never leave your phone" a
+         fact about the APK rather than a promise in a privacy policy.
+
+         ML Kit's text recogniser runs entirely on-device — the model is
+         compiled into the APK by com.google.mlkit:text-recognition. But it
+         drags in com.google.android.datatransport:transport-backend-cct, a
+         telemetry uploader, and *that* is what declares these two permissions.
+         Nothing the feature does needs them.
+
+         Removed here rather than by excluding the Gradle module, so ML Kit's
+         classes still resolve. The transport is written to survive having no
+         connectivity, so with the permission gone it fails quietly and the
+         recogniser is untouched.
+
+         Only the release variant. src/debug and src/profile keep INTERNET
+         because the Flutter tool needs it for hot reload and breakpoints; that
+         has always been true, and those builds are never shipped. -->
+    <uses-permission
+        android:name="android.permission.INTERNET"
+        tools:node="remove" />
+    <uses-permission
+        android:name="android.permission.ACCESS_NETWORK_STATE"
+        tools:node="remove" />
+</manifest>
