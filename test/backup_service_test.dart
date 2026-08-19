@@ -271,6 +271,38 @@ void main() {
     );
   });
 
+  test('a backup saved as UTF-8 bytes restores its text intact', () async {
+    // Saving to Downloads encodes the JSON to bytes by hand, where the share
+    // path let dart:io do it. Anything but UTF-8 — or a stray BOM — turns a
+    // shop called "Aling Rosa's Tubig — Sampaloc" into mojibake on the new
+    // phone, or fails the JSON parse outright.
+    await _seed(db, userId: 'usr_1', username: 'owner');
+    await db.insert('businesses', {
+      'id': 'biz_utf8',
+      'user_id': 'usr_1',
+      'name': 'Aling Rosa’s Tubig — Sampaloñ',
+      'type': 'Water Station',
+      'address': '',
+      'phone': '',
+      'created_at': 1,
+    });
+
+    final json = await service.exportToJson('usr_1');
+    final bytes = utf8.encode(json);
+    // Exactly what comes back off the device: bytes in, string out.
+    await service.restore(utf8.decode(bytes));
+
+    final restored =
+        (await db.query('businesses', where: 'id = ?', whereArgs: ['biz_utf8']))
+            .single;
+    expect(restored['name'], 'Aling Rosa’s Tubig — Sampaloñ');
+  });
+
+  test('the backup file is named as JSON, since that is what is saved', () {
+    final name = backupFileName(DateTime(2026, 8, 19, 10, 31));
+    expect(name, 'sellora-backup-2026-08-19-1031.json');
+  });
+
   test('refuses when another account already owns the username', () async {
     await _seed(db, userId: 'usr_1', username: 'owner');
     final backup = await service.exportToJson('usr_1');

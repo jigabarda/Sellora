@@ -1,4 +1,6 @@
+import 'dart:convert';
 import 'dart:io';
+import 'dart:typed_data';
 
 import 'package:file_selector/file_selector.dart';
 import 'package:flutter/material.dart';
@@ -7,6 +9,7 @@ import 'package:share_plus/share_plus.dart';
 
 import '../../core/sellora_ui.dart';
 import '../../data/backup/backup_service.dart';
+import '../../data/export/device_downloads.dart';
 import '../../providers.dart';
 
 class BackupScreen extends ConsumerStatefulWidget {
@@ -52,11 +55,15 @@ class _BackupScreenState extends ConsumerState<BackupScreen> {
             icon: Icons.upload_file_outlined,
             title: 'Export backup',
             body: 'Writes every business, product, sale, customer, expense and '
-                'refund to a JSON file, then opens the share sheet so you can '
-                'save it to Drive, Files, or email.',
-            actionLabel: 'Export backup',
-            actionIcon: Icons.ios_share,
-            onPressed: _busy ? null : _export,
+                'refund to a JSON file. Saving puts it in Downloads; sending '
+                'hands it to an app you pick. It never leaves the phone on '
+                'its own.',
+            actionLabel: 'Save to device',
+            actionIcon: Icons.download_outlined,
+            onPressed: _busy ? null : _saveToDevice,
+            secondaryLabel: 'Send a copy',
+            secondaryIcon: Icons.ios_share,
+            onSecondaryPressed: _busy ? null : _export,
           ),
           Gap.h12,
           _ActionCard(
@@ -77,6 +84,46 @@ class _BackupScreenState extends ConsumerState<BackupScreen> {
         ],
       ),
     );
+  }
+
+  /// Puts the backup in Downloads, where the owner can find it again.
+  ///
+  /// An export that only offers a share sheet is not really an export: on some
+  /// devices the sheet has no Files entry at all, and the whole point of a
+  /// backup is having a file you can put somewhere safe yourself.
+  ///
+  /// Falls through to sharing on Android 9 and older, where writing to a public
+  /// folder would mean asking for a storage permission this app does not hold.
+  Future<void> _saveToDevice() async {
+    final userId = ref.read(authControllerProvider).userId;
+    if (userId == null) return;
+
+    setState(() => _busy = true);
+    try {
+      final service = ref.read(backupServiceProvider);
+      final json = await service.exportToJson(userId);
+      final saved = await ref.read(deviceDownloadsProvider).save(
+            fileName: backupFileName(DateTime.now()),
+            bytes: Uint8List.fromList(utf8.encode(json)),
+            mimeType: 'application/json',
+          );
+
+      if (!mounted) return;
+      showToast(context, 'Saved to Downloads as $saved');
+    } on DownloadsUnsupported {
+      if (!mounted) return;
+      showToast(
+          context,
+          'This phone cannot save straight to Downloads — '
+          'choose where to put it instead.');
+      setState(() => _busy = false);
+      await _export();
+      return;
+    } catch (e) {
+      if (mounted) showToast(context, 'Export failed: $e', isError: true);
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
   }
 
   Future<void> _export() async {
@@ -202,6 +249,9 @@ class _ActionCard extends StatelessWidget {
     required this.actionIcon,
     required this.onPressed,
     this.destructive = false,
+    this.secondaryLabel,
+    this.secondaryIcon,
+    this.onSecondaryPressed,
   });
 
   final IconData icon;
@@ -211,6 +261,11 @@ class _ActionCard extends StatelessWidget {
   final IconData actionIcon;
   final VoidCallback? onPressed;
   final bool destructive;
+
+  /// A quieter second way to do the same thing, shown under the main button.
+  final String? secondaryLabel;
+  final IconData? secondaryIcon;
+  final VoidCallback? onSecondaryPressed;
 
   @override
   Widget build(BuildContext context) {
@@ -239,6 +294,14 @@ class _ActionCard extends StatelessWidget {
               icon: Icon(actionIcon, size: 18),
               label: Text(actionLabel),
             ),
+          if (secondaryLabel != null) ...[
+            Gap.h8,
+            OutlinedButton.icon(
+              onPressed: onSecondaryPressed,
+              icon: Icon(secondaryIcon, size: 18),
+              label: Text(secondaryLabel!),
+            ),
+          ],
         ],
       ),
     );
