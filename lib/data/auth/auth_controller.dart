@@ -199,6 +199,137 @@ class AuthController extends StateNotifier<AuthState> {
     );
   }
 
+  /// Makes a recovery code, replacing any previous one, and returns it in the
+  /// clear so it can be shown once.
+  ///
+  /// Guarded by the current password for the same reason `changePassword` is:
+  /// otherwise anyone who found an unlocked phone could take a code away with
+  /// them and lock the owner out of it later.
+  ///
+  /// Only the hash is kept, salted separately from the password so the two
+  /// secrets share nothing. Nobody can read the code back afterwards — not the
+  /// owner, and not this app.
+  Future<String> createRecoveryCode({required String password}) async {
+    final id = state.userId;
+    if (id == null) {
+      throw AuthException('You are not signed in.');
+    }
+    final rows =
+        await _db.query('users', where: 'id = ?', whereArgs: [id], limit: 1);
+    if (rows.isEmpty) {
+      throw AuthException('Your account could not be found.');
+    }
+    final row = rows.first;
+    if (_hash(row['salt']! as String, password) !=
+        row['password_hash']! as String) {
+      throw AuthException('Incorrect password.');
+    }
+
+    return _issueRecoveryCode(id);
+  }
+
+  /// Sets a new password for [username] on the strength of a recovery code,
+  /// and hands back a fresh code to replace the one just spent.
+  ///
+  /// No session required — the whole point is that the owner cannot get one.
+  /// The code is single use: leaving it live would turn a slip of paper into a
+  /// permanent second key to the account, so it is replaced here and the new
+  /// one is returned to be written down in its place.
+  ///
+  /// Nothing but the credential changes. Not one sale, product or business is
+  /// touched — a forgotten password is not a reason to lose the records.
+  Future<String> resetPasswordWithRecoveryCode({
+    required String username,
+    required String code,
+    required String newPassword,
+  }) async {
+    if (newPassword.length < 6) {
+      throw AuthException('Password must be at least 6 characters.');
+    }
+
+    final rows = await _db.query(
+      'users',
+      where: 'username = ?',
+      whereArgs: [normalizeUsername(username)],
+      limit: 1,
+    );
+    if (rows.isEmpty) {
+      throw AuthException('No account found for that username.');
+    }
+    final row = rows.first;
+    final recoverySalt = row['recovery_salt'] as String?;
+    final recoveryHash = row['recovery_hash'] as String?;
+    if (recoverySalt == null || recoveryHash == null) {
+      throw AuthException(
+        'That account has no recovery code. Restore a backup file instead.',
+      );
+    }
+    if (_hash(recoverySalt, normalizeRecoveryCode(code)) != recoveryHash) {
+      throw AuthException('That recovery code does not match.');
+    }
+
+    final id = row['id']! as String;
+    final salt = _randomSalt();
+    await _db.update(
+      'users',
+      {'salt': salt, 'password_hash': _hash(salt, newPassword)},
+      where: 'id = ?',
+      whereArgs: [id],
+    );
+    return _issueRecoveryCode(id);
+  }
+
+  /// Whether [username] has a recovery code, so a screen can say which way out
+  /// exists before asking for something the account cannot check.
+  Future<bool> hasRecoveryCode(String username) async {
+    final rows = await _db.query(
+      'users',
+      columns: ['recovery_hash'],
+      where: 'username = ?',
+      whereArgs: [normalizeUsername(username)],
+      limit: 1,
+    );
+    return rows.isNotEmpty && rows.first['recovery_hash'] != null;
+  }
+
+  Future<String> _issueRecoveryCode(String userId) async {
+    final code = _randomRecoveryCode();
+    final salt = _randomSalt();
+    await _db.update(
+      'users',
+      {
+        'recovery_salt': salt,
+        // Hashed in its normalised form, which is what verification will
+        // compare against. Hashing the dashed version instead would make every
+        // code fail, since nobody types the dashes back identically.
+        'recovery_hash': _hash(salt, normalizeRecoveryCode(code)),
+      },
+      where: 'id = ?',
+      whereArgs: [userId],
+    );
+    return code;
+  }
+
+  /// Twelve characters in three groups, from an alphabet with no 0/O, 1/I/L or
+  /// 5/S in it. Someone is going to copy this off a screen onto the back of a
+  /// receipt and type it in months later, and the commonest way that fails is
+  /// two characters that look alike.
+  static String _randomRecoveryCode() {
+    const alphabet = '23456789ABCDEFGHJKMNPQRTUVWXYZ';
+    final random = Random.secure();
+    final chars = List<String>.generate(
+      12,
+      (_) => alphabet[random.nextInt(alphabet.length)],
+    );
+    return '${chars.sublist(0, 4).join()}-'
+        '${chars.sublist(4, 8).join()}-'
+        '${chars.sublist(8).join()}';
+  }
+
+  /// Dashes, spaces and case are how it is written down, not what it is.
+  static String normalizeRecoveryCode(String raw) =>
+      raw.toUpperCase().replaceAll(RegExp(r'[^0-9A-Z]'), '');
+
   Future<void> logout() async {
     await _prefs.remove(_prefActiveUserId);
     state = const AuthState(userId: null);

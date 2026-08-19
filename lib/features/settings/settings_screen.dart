@@ -125,6 +125,9 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                   (v == null || v.trim().isEmpty) ? 'Enter your name' : null,
             ),
             Gap.h16,
+            // Two rows rather than three across. "Recovery code" is a long
+            // label, and squeezed beside two others it wrapped mid-word into
+            // "Reco very code".
             Row(
               children: [
                 Expanded(
@@ -136,14 +139,19 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                 ),
                 Gap.w12,
                 Expanded(
-                  child: FilledButton(
-                    onPressed: _savingAccount ? null : _saveAccount,
-                    child: _savingAccount
-                        ? const ButtonSpinner()
-                        : const Text('Save'),
+                  child: OutlinedButton.icon(
+                    onPressed: _savingAccount ? null : _openRecoveryCodeDialog,
+                    icon: const Icon(Icons.vpn_key_outlined, size: 17),
+                    label: const Text('Recovery code'),
                   ),
                 ),
               ],
+            ),
+            Gap.h12,
+            FilledButton(
+              onPressed: _savingAccount ? null : _saveAccount,
+              child:
+                  _savingAccount ? const ButtonSpinner() : const Text('Save'),
             ),
           ],
         ),
@@ -166,6 +174,34 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
       if (mounted) showToast(context, 'Could not save: $e', isError: true);
     } finally {
       if (mounted) setState(() => _savingAccount = false);
+    }
+  }
+
+  /// Makes a recovery code, or replaces the one already there.
+  ///
+  /// Asks for the current password first, the same as changing it does. A code
+  /// handed out on the strength of an unlocked screen would let whoever is
+  /// holding the phone lock its owner out of it later.
+  Future<void> _openRecoveryCodeDialog() async {
+    final password = await showDialog<String>(
+      context: context,
+      builder: (_) => const _ConfirmPasswordDialog(),
+    );
+    if (password == null || !mounted) return;
+
+    try {
+      final code = await ref
+          .read(authControllerProvider.notifier)
+          .createRecoveryCode(password: password);
+      if (!mounted) return;
+      // Pushed, not gone to: settings is where they were, and this is a detour.
+      context.push('/recovery-code', extra: code);
+    } on AuthException catch (e) {
+      if (mounted) showToast(context, e.message, isError: true);
+    } catch (e) {
+      if (mounted) {
+        showToast(context, 'Could not make a code: $e', isError: true);
+      }
     }
   }
 
@@ -414,6 +450,61 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     } catch (e) {
       if (mounted) showToast(context, 'Could not delete: $e', isError: true);
     }
+  }
+}
+
+/// Asks for the current password and hands it back, for actions that need
+/// proving who you are without changing anything.
+class _ConfirmPasswordDialog extends StatefulWidget {
+  const _ConfirmPasswordDialog();
+
+  @override
+  State<_ConfirmPasswordDialog> createState() => _ConfirmPasswordDialogState();
+}
+
+class _ConfirmPasswordDialogState extends State<_ConfirmPasswordDialog> {
+  final _password = TextEditingController();
+
+  @override
+  void dispose() {
+    _password.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: const Text('Confirm it is you'),
+      content: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Text(
+            'Enter your password to make a recovery code. Anyone who has this '
+            'code can set a new password for your account.',
+            style: context.text.bodyMedium,
+          ),
+          Gap.h16,
+          TextField(
+            controller: _password,
+            obscureText: true,
+            autofocus: true,
+            decoration: const InputDecoration(labelText: 'Current password'),
+            onSubmitted: (v) => Navigator.of(context).pop(v),
+          ),
+        ],
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(),
+          child: const Text('Cancel'),
+        ),
+        FilledButton(
+          onPressed: () => Navigator.of(context).pop(_password.text),
+          child: const Text('Continue'),
+        ),
+      ],
+    );
   }
 }
 

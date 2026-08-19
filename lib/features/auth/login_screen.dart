@@ -96,7 +96,25 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                           ? 'Enter your password'
                           : null,
                     ),
-                    Gap.h24,
+                    // Under the field it is about, where someone looks the
+                    // moment the password they typed does not work. Quiet and
+                    // right-aligned so it reads as a footnote to the field
+                    // rather than competing with Sign in.
+                    Align(
+                      alignment: Alignment.centerRight,
+                      child: TextButton(
+                        onPressed: () => context.push('/forgot-password'),
+                        style: TextButton.styleFrom(
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: Gap.sm, vertical: 2),
+                          minimumSize: Size.zero,
+                          tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                          textStyle: context.text.bodySmall,
+                        ),
+                        child: const Text('Forgot password?'),
+                      ),
+                    ),
+                    Gap.h16,
                     FilledButton(
                       onPressed: _busy ? null : _submit,
                       child:
@@ -125,15 +143,6 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                       icon: const Icon(Icons.settings_backup_restore_outlined,
                           size: 18),
                       label: const Text('Restore from a backup file'),
-                    ),
-                    // Someone who has forgotten their password does not think
-                    // to look under "restore", so the words they are actually
-                    // searching for have to be on the screen.
-                    Text(
-                      'Forgotten your password? Restoring a backup lets you '
-                      'set a new one.',
-                      style: context.text.bodySmall,
-                      textAlign: TextAlign.center,
                     ),
                   ],
                 ),
