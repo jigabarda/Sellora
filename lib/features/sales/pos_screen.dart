@@ -118,10 +118,16 @@ class _PosScreenState extends ConsumerState<PosScreen> {
                               const SliverGridDelegateWithMaxCrossAxisExtent(
                             // Two columns on a phone, more on a tablet, without
                             // hard-coding either.
-                            maxCrossAxisExtent: 210,
+                            maxCrossAxisExtent: 200,
                             mainAxisSpacing: Gap.sm,
                             crossAxisSpacing: Gap.sm,
-                            childAspectRatio: 1.32,
+                            // Wider than tall: the tile only has to carry a
+                            // name, a price and a badge, and a squarer one left
+                            // a hole in the middle.
+                            // Sized to the contents — a name of up to two
+                            // lines, a price, and nothing else. Found by
+                            // testing: 2.05 clips a wrapped name.
+                            childAspectRatio: 1.80,
                           ),
                           itemCount: shown.length,
                           itemBuilder: (context, i) {
@@ -237,7 +243,19 @@ class _PosScreenState extends ConsumerState<PosScreen> {
   }
 }
 
-/// One product, sized for a thumb.
+/// One product key.
+///
+/// Three earlier versions failed the same way and it is worth writing down.
+/// A pale card left the middle empty; tinting it did not help; filling it with
+/// the product's own colour cured the emptiness and replaced it with a grid of
+/// clashing hues — brown beside magenta reads as arbitrary, not designed,
+/// because a per-product colour is a decoration nobody chose.
+///
+/// So: no per-product colour at all. One accent, used where it earns its
+/// place — on the price, which is the thing actually read at a counter — and
+/// on the whole key once it is in the sale, which is the one distinction that
+/// matters here. The key is sized to its contents rather than to a grid guess,
+/// which is what finally removes the hole in the middle.
 class _ProductTile extends StatelessWidget {
   const _ProductTile({
     required this.product,
@@ -257,28 +275,29 @@ class _ProductTile extends StatelessWidget {
     final selected = inCart > 0;
     final low = product.trackStock && product.stock <= 5;
 
+    final ink = selected ? t.onAccent : t.ink;
+    final quiet = selected ? t.onAccent.withValues(alpha: 0.75) : t.muted;
+
     return Material(
-      color: selected
-          ? Color.alphaBlend(
-              t.accent.withValues(alpha: context.isDark ? 0.26 : 0.10),
-              t.surface,
-            )
-          : t.surface,
+      color: selected ? t.accent : t.surface,
       borderRadius: BorderRadius.circular(Radii.lg),
+      clipBehavior: Clip.antiAlias,
       child: InkWell(
         onTap: onTap,
         onLongPress: onLongPress,
-        borderRadius: BorderRadius.circular(Radii.lg),
         child: Container(
-          padding: const EdgeInsets.all(Gap.md),
+          padding: const EdgeInsets.symmetric(
+              horizontal: Gap.md, vertical: Gap.sm + 2),
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(Radii.lg),
             border: Border.all(color: selected ? t.accent : t.line),
           ),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisAlignment: MainAxisAlignment.center,
             children: [
               Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Expanded(
                     child: Text(
@@ -286,9 +305,9 @@ class _ProductTile extends StatelessWidget {
                       maxLines: 2,
                       overflow: TextOverflow.ellipsis,
                       style: context.text.bodyMedium?.copyWith(
-                        color: t.ink,
+                        color: ink,
                         fontWeight: FontWeight.w600,
-                        height: 1.25,
+                        height: 1.2,
                       ),
                     ),
                   ),
@@ -297,32 +316,58 @@ class _ProductTile extends StatelessWidget {
                     Container(
                       constraints: const BoxConstraints(minWidth: 24),
                       padding: const EdgeInsets.symmetric(
-                          horizontal: 7, vertical: 3),
+                          horizontal: 7, vertical: 2),
                       decoration: BoxDecoration(
-                        color: t.accent,
+                        color: t.onAccent,
                         borderRadius: BorderRadius.circular(Radii.pill),
                       ),
                       child: Text(
                         '$inCart',
                         textAlign: TextAlign.center,
-                        style: context.text.labelSmall
-                            ?.copyWith(color: t.onAccent),
+                        style: context.text.labelSmall?.copyWith(
+                          color: t.accent,
+                          fontWeight: FontWeight.w800,
+                        ),
                       ),
                     ),
                   ],
                 ],
               ),
-              const Spacer(),
-              Text(
-                formatPhp(product.price),
-                style: context.text.titleSmall?.copyWith(color: t.ink),
+              Gap.h4,
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.baseline,
+                textBaseline: TextBaseline.alphabetic,
+                children: [
+                  Flexible(
+                    child: Text(
+                      formatPhp(product.price),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: context.text.titleSmall?.copyWith(
+                        // The number is what gets read; the accent is spent on
+                        // it rather than sprayed across the whole key.
+                        color: selected ? t.onAccent : t.accent,
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                  ),
+                  if (product.trackStock) ...[
+                    Gap.w8,
+                    Flexible(
+                      child: Text(
+                        low ? '${product.stock} left' : '${product.stock}',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: context.text.bodySmall?.copyWith(
+                          color: low && !selected ? t.warning : quiet,
+                          fontWeight:
+                              low ? FontWeight.w700 : FontWeight.w400,
+                        ),
+                      ),
+                    ),
+                  ],
+                ],
               ),
-              if (product.trackStock)
-                Text(
-                  '${product.stock} left',
-                  style: context.text.bodySmall
-                      ?.copyWith(color: low ? t.warning : t.muted),
-                ),
             ],
           ),
         ),
@@ -386,7 +431,8 @@ class _CheckoutBar extends StatelessWidget {
               Gap.w12,
               // Tappable, because the grid deliberately hides the line items
               // and the owner still has to be able to check them.
-              InkWell(
+              Flexible(
+                child: InkWell(
                 onTap: onReview,
                 borderRadius: BorderRadius.circular(Radii.sm),
                 child: Padding(
@@ -398,13 +444,18 @@ class _CheckoutBar extends StatelessWidget {
                     children: [
                       Text(
                         '${cart.itemCount} item${cart.itemCount == 1 ? '' : 's'}',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
                         style: context.text.bodySmall,
                       ),
                       Text(
                         formatPhp(cart.total),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
                         style: context.text.titleLarge?.copyWith(color: t.ink),
                       ),
                     ],
+                  ),
                   ),
                 ),
               ),
