@@ -169,6 +169,36 @@ class AuthController extends StateNotifier<AuthState> {
     state = AuthState(userId: userId);
   }
 
+  /// Sets a new password without asking for the old one.
+  ///
+  /// The forgotten-password path, and the only one there can be: the hash is
+  /// one-way and there is no server to mail a link from, so the password itself
+  /// is unrecoverable by design. What can be re-established is *proof of
+  /// ownership*, and a backup file is that proof — it is the account's own
+  /// records, which nobody else has.
+  ///
+  /// Reachable only straight after a restore, because that is the moment the
+  /// proof was shown. Exposing it from settings would let anyone who found an
+  /// unlocked phone lock its owner out of it, which is a worse problem than the
+  /// one this solves.
+  Future<void> setPasswordAfterRestore(String newPassword) async {
+    final id = state.userId;
+    if (id == null) {
+      throw AuthException('You are not signed in.');
+    }
+    if (newPassword.length < 6) {
+      throw AuthException('Password must be at least 6 characters.');
+    }
+    // Fresh salt, same as an ordinary change: the old hash must not survive.
+    final salt = _randomSalt();
+    await _db.update(
+      'users',
+      {'salt': salt, 'password_hash': _hash(salt, newPassword)},
+      where: 'id = ?',
+      whereArgs: [id],
+    );
+  }
+
   Future<void> logout() async {
     await _prefs.remove(_prefActiveUserId);
     state = const AuthState(userId: null);

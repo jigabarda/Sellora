@@ -179,13 +179,16 @@ class _RestoreScreenState extends ConsumerState<RestoreScreen> {
     });
     try {
       final userId = await ref.read(backupServiceProvider).restore(raw);
-      await ref.read(authControllerProvider.notifier)
+      await ref
+          .read(authControllerProvider.notifier)
           .adoptRestoredSession(userId);
 
       if (!mounted) return;
-      // Straight to the account rather than back to a login form: the whole
-      // point is that the person doing this has already lost enough steps.
-      context.go('/');
+      // Not back to a login form — the whole point is that the person doing
+      // this has already lost enough steps. Straight on to the offer of a new
+      // password instead, since a forgotten one is half the reason to be here
+      // and the file has just proved the account is theirs.
+      context.go('/new-password', extra: _summary?.username);
       showToast(context, 'Your records are back.');
     } catch (e) {
       if (mounted) {
