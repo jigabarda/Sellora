@@ -1,3 +1,6 @@
+import 'dart:convert';
+
+import 'package:crypto/crypto.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:sellora_mobile/data/auth/auth_controller.dart';
 import 'package:sellora_mobile/data/backup/backup_service.dart';
@@ -150,6 +153,196 @@ void main() {
     });
   });
 
+  group('every new account gets a recovery code', () {
+    test('registering issues one without being asked', () async {
+      // The setUp above registered @owner. If a code only appeared when
+      // somebody went looking in settings, the people who forget a password
+      // would be exactly the people who never went.
+      expect(await auth.hasRecoveryCode('owner'), isTrue);
+    });
+
+    test('the code register hands back is the one that works', () async {
+      final code = await auth.register(
+        name: 'Second Owner',
+        username: 'second',
+        password: 'secret123',
+      );
+
+      expect(code, matches(RegExp(r'^[0-9A-Z]{4}-[0-9A-Z]{4}-[0-9A-Z]{4}$')));
+
+      await auth.resetPasswordWithRecoveryCode(
+        username: 'second',
+        code: code,
+        newPassword: 'brandnew456',
+      );
+      await auth.logout();
+      await auth.login(username: 'second', password: 'brandnew456');
+      expect(auth.isLoggedIn, isTrue);
+    });
+
+    test('two accounts do not share a code', () async {
+      final first = await auth.createRecoveryCode(password: 'secret123');
+      final second = await auth.register(
+        name: 'Second Owner',
+        username: 'second',
+        password: 'secret123',
+      );
+
+      expect(first, isNot(second));
+      // And one account's code is no use against the other.
+      await expectLater(
+        auth.resetPasswordWithRecoveryCode(
+          username: 'second',
+          code: first,
+          newPassword: 'brandnew456',
+        ),
+        throwsA(isA<AuthException>()),
+      );
+    });
+
+    test('a registered account is still signed in afterwards', () async {
+      // Issuing the code must not disturb the session registering just set up.
+      await auth.logout();
+      await auth.register(
+        name: 'Third Owner',
+        username: 'third',
+        password: 'secret123',
+      );
+
+      expect(auth.isLoggedIn, isTrue);
+      expect((await auth.currentUser())!.username, 'third');
+    });
+  });
+
+  group('password stretching', () {
+    /// Writes a credential in the pre-stretching format: sha256(salt+secret).
+    /// This is what every account made before this change actually holds, and
+    /// the only honest way to test that they keep working.
+    Future<void> writeLegacyPassword(String password) async {
+      const salt = 'legacy-salt';
+      final digest = sha256.convert(utf8.encode('$salt$password')).toString();
+      await db.update(
+        'users',
+        {'salt': salt, 'password_hash': digest},
+        where: 'id = ?',
+        whereArgs: [auth.state.userId],
+      );
+    }
+
+    Future<Map<String, Object?>> userRow() async =>
+        (await db.query('users', where: 'username = ?', whereArgs: ['owner']))
+            .single;
+
+    test('a new account is stored stretched, not as a bare digest', () async {
+      final stored = (await userRow())['password_hash']! as String;
+
+      expect(stored, startsWith('pbkdf2\$'));
+      expect(
+        stored,
+        isNot(sha256
+            .convert(utf8.encode('${(await userRow())['salt']}secret123'))
+            .toString()),
+        reason: 'a bare sha256 digest would mean nothing changed',
+      );
+    });
+
+    test('an account made before stretching can still sign in', () async {
+      // The one thing that must not break. Locking people out of their own
+      // records to improve a hash would be worse than the weak hash.
+      await writeLegacyPassword('secret123');
+      await auth.logout();
+
+      await auth.login(username: 'owner', password: 'secret123');
+      expect(auth.isLoggedIn, isTrue);
+    });
+
+    test('signing in upgrades an old credential in passing', () async {
+      await writeLegacyPassword('secret123');
+      await auth.logout();
+      expect((await userRow())['password_hash'], isNot(startsWith('pbkdf2\$')));
+
+      await auth.login(username: 'owner', password: 'secret123');
+
+      final after = await userRow();
+      expect(after['password_hash'], startsWith('pbkdf2\$'));
+      expect(after['salt'], isNot('legacy-salt'),
+          reason: 'a rehash gets a fresh salt, like every other write');
+
+      // And the same password keeps working against the upgraded row.
+      await auth.logout();
+      await auth.login(username: 'owner', password: 'secret123');
+      expect(auth.isLoggedIn, isTrue);
+    });
+
+    test('a wrong password against an old credential is still refused',
+        () async {
+      await writeLegacyPassword('secret123');
+      await auth.logout();
+
+      await expectLater(
+        auth.login(username: 'owner', password: 'wrongpassword'),
+        throwsA(isA<AuthException>()),
+      );
+      // And a failed attempt does not quietly rewrite the row.
+      expect((await userRow())['password_hash'], isNot(startsWith('pbkdf2\$')));
+    });
+
+    test('the stored value carries its own work factor', () async {
+      // So the count can be raised later without stranding today's rows.
+      final stored = (await userRow())['password_hash']! as String;
+      final parts = stored.split('\$');
+
+      expect(parts, hasLength(3));
+      expect(int.parse(parts[1]), greaterThanOrEqualTo(100000));
+      expect(parts[2], hasLength(64), reason: '32 bytes as hex');
+    });
+
+    test('the same password under a different salt gives a different hash',
+        () async {
+      await auth.register(
+        name: 'Second',
+        username: 'second',
+        password: 'secret123',
+      );
+
+      final rows = await db.query('users', orderBy: 'created_at ASC');
+      final first = rows.firstWhere((r) => r['username'] == 'owner');
+      final second = rows.firstWhere((r) => r['username'] == 'second');
+
+      expect(first['salt'], isNot(second['salt']));
+      expect(first['password_hash'], isNot(second['password_hash']),
+          reason: 'identical passwords must not collide across accounts');
+    });
+
+    test('changing a password writes the stretched format', () async {
+      await auth.changePassword(
+        currentPassword: 'secret123',
+        newPassword: 'brandnew456',
+      );
+
+      expect((await userRow())['password_hash'], startsWith('pbkdf2\$'));
+      await auth.logout();
+      await auth.login(username: 'owner', password: 'brandnew456');
+      expect(auth.isLoggedIn, isTrue);
+    });
+
+    test('a recovery code is stretched too', () async {
+      final code = await auth.createRecoveryCode(password: 'secret123');
+      final stored = (await userRow())['recovery_hash']! as String;
+
+      expect(stored, startsWith('pbkdf2\$'));
+      // And still verifies, which is what the format change could have broken.
+      await auth.resetPasswordWithRecoveryCode(
+        username: 'owner',
+        code: code,
+        newPassword: 'brandnew456',
+      );
+      await auth.logout();
+      await auth.login(username: 'owner', password: 'brandnew456');
+      expect(auth.isLoggedIn, isTrue);
+    });
+  });
+
   group('recovery codes', () {
     test('a code resets the password without touching anything else', () async {
       // The case the whole feature exists for: no backup file, no memory of
@@ -271,8 +464,16 @@ void main() {
 
     test('an account with no code says so rather than failing vaguely',
         () async {
-      // Every account predating this feature is in exactly this state, so the
-      // message has to point somewhere useful.
+      // Registering issues a code now, so the state has to be arranged: this
+      // is every account made before recovery codes existed, and the message
+      // has to point those people somewhere useful.
+      await db.update(
+        'users',
+        {'recovery_salt': null, 'recovery_hash': null},
+        where: 'username = ?',
+        whereArgs: ['owner'],
+      );
+
       await expectLater(
         auth.resetPasswordWithRecoveryCode(
           username: 'owner',
@@ -290,11 +491,25 @@ void main() {
     test('making a code needs the current password', () async {
       // Otherwise anyone holding an unlocked phone could walk off with a key
       // to it and lock the owner out later.
+      final issuedAtRegistration = await auth.createRecoveryCode(
+        password: 'secret123',
+      );
+
       await expectLater(
         auth.createRecoveryCode(password: 'wrongpassword'),
         throwsA(isA<AuthException>()),
       );
-      expect(await auth.hasRecoveryCode('owner'), isFalse);
+
+      // The refusal must not have rotated the code either — losing the one
+      // that is written down would be its own way of locking someone out.
+      await auth.resetPasswordWithRecoveryCode(
+        username: 'owner',
+        code: issuedAtRegistration,
+        newPassword: 'brandnew456',
+      );
+      await auth.logout();
+      await auth.login(username: 'owner', password: 'brandnew456');
+      expect(auth.isLoggedIn, isTrue);
     });
 
     test('making a new code retires the old one', () async {
@@ -312,11 +527,19 @@ void main() {
     });
 
     test('hasRecoveryCode reports what the account actually has', () async {
-      expect(await auth.hasRecoveryCode('owner'), isFalse);
-      await auth.createRecoveryCode(password: 'secret123');
       expect(await auth.hasRecoveryCode('  OWNER '), isTrue,
-          reason: 'the username is normalised like everywhere else');
+          reason: 'registering issues one, and the username is normalised '
+              'here like everywhere else');
       expect(await auth.hasRecoveryCode('nobody'), isFalse);
+
+      // And it reads false for an account predating recovery codes.
+      await db.update(
+        'users',
+        {'recovery_salt': null, 'recovery_hash': null},
+        where: 'username = ?',
+        whereArgs: ['owner'],
+      );
+      expect(await auth.hasRecoveryCode('owner'), isFalse);
     });
 
     test('the code is never readable back out of the database', () async {

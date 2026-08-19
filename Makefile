@@ -18,7 +18,7 @@ FLUTTER ?= flutter
 DART ?= dart
 ADB ?= C:/Users/Andrei/AppData/Local/Android/Sdk/platform-tools/adb.exe
 DEVICE_FLAGS := $(if $(DEVICE),-d $(DEVICE),)
-ANDROID_PACKAGE ?= com.example.sellora_mobile
+ANDROID_PACKAGE ?= com.sellora.mobile
 
 LOCAL_DEFINES := --dart-define=APP_ENV=local
 STAGING_DEFINES := --dart-define=APP_ENV=staging

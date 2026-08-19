@@ -168,13 +168,17 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
     if (!_formKey.currentState!.validate()) return;
     setState(() => _busy = true);
     try {
-      await ref.read(authControllerProvider.notifier).register(
-            name: _name.text,
-            username: _username.text,
-            password: _password.text,
-          );
+      final recoveryCode =
+          await ref.read(authControllerProvider.notifier).register(
+                name: _name.text,
+                username: _username.text,
+                password: _password.text,
+              );
       if (!mounted) return;
-      context.go('/');
+      // Shown before the app rather than buried in settings. Somebody who has
+      // just forgotten a password will not go hunting for a feature they were
+      // never told about, and by then it is too late to make one.
+      context.go('/recovery-code', extra: recoveryCode);
     } on AuthException catch (e) {
       if (mounted) showToast(context, e.message, isError: true);
     } catch (e) {

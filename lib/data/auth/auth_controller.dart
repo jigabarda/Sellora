@@ -90,15 +90,34 @@ class AuthController extends StateNotifier<AuthState> {
     final id = row['id']! as String;
     final salt = row['salt']! as String;
     final stored = row['password_hash']! as String;
-    final hash = _hash(salt, password);
-    if (hash != stored) {
+    if (!_verify(salt, password, stored)) {
       throw AuthException('Incorrect password.');
     }
+
+    // Signing in is the one moment the plaintext password exists, so it is the
+    // only chance to re-stretch an account made before stretching arrived.
+    // Nobody is prompted and nobody is locked out; the row simply improves.
+    if (_needsRehash(stored)) {
+      final freshSalt = _randomSalt();
+      await _db.update(
+        'users',
+        {'salt': freshSalt, 'password_hash': _hash(freshSalt, password)},
+        where: 'id = ?',
+        whereArgs: [id],
+      );
+    }
+
     await _prefs.setString(_prefActiveUserId, id);
     state = AuthState(userId: id);
   }
 
-  Future<void> register({
+  /// Creates a local account and returns its recovery code, to be shown once.
+  ///
+  /// The code is issued here rather than left to a screen so that every account
+  /// has one by construction. Made optional, the people who would go looking
+  /// for it in settings are exactly the people who never needed it — and the
+  /// ones who forget a password are the ones who never went.
+  Future<String> register({
     required String name,
     required String username,
     required String password,
@@ -142,6 +161,8 @@ class AuthController extends StateNotifier<AuthState> {
 
     await _prefs.setString(_prefActiveUserId, id);
     state = AuthState(userId: id);
+
+    return _issueRecoveryCode(id);
   }
 
   /// Signs in the account a backup just restored, without asking for the
@@ -220,8 +241,8 @@ class AuthController extends StateNotifier<AuthState> {
       throw AuthException('Your account could not be found.');
     }
     final row = rows.first;
-    if (_hash(row['salt']! as String, password) !=
-        row['password_hash']! as String) {
+    if (!_verify(
+        row['salt']! as String, password, row['password_hash']! as String)) {
       throw AuthException('Incorrect password.');
     }
 
@@ -264,7 +285,7 @@ class AuthController extends StateNotifier<AuthState> {
         'That account has no recovery code. Restore a backup file instead.',
       );
     }
-    if (_hash(recoverySalt, normalizeRecoveryCode(code)) != recoveryHash) {
+    if (!_verify(recoverySalt, normalizeRecoveryCode(code), recoveryHash)) {
       throw AuthException('That recovery code does not match.');
     }
 
@@ -385,8 +406,8 @@ class AuthController extends StateNotifier<AuthState> {
       throw AuthException('Your account could not be found.');
     }
     final row = rows.first;
-    if (_hash(row['salt']! as String, currentPassword) !=
-        row['password_hash']! as String) {
+    if (!_verify(row['salt']! as String, currentPassword,
+        row['password_hash']! as String)) {
       throw AuthException('Current password is incorrect.');
     }
 
@@ -432,7 +453,89 @@ class AuthController extends StateNotifier<AuthState> {
     return base64UrlEncode(bytes);
   }
 
+  /// Work factor for [_hash].
+  ///
+  /// Deliberately below the figure OWASP publishes for servers. This runs in
+  /// Dart on whatever phone a sari-sari store could afford, where the published
+  /// number would put several seconds in front of someone signing in at six in
+  /// the morning. The jump that matters has already been made: one round to a
+  /// hundred thousand is a hundred-thousand-fold increase in what an offline
+  /// guess costs, and the next sixfold buys far less than the first.
+  static const _pbkdf2Iterations = 100000;
+
+  /// Hashes a secret for storage.
+  ///
+  /// PBKDF2-HMAC-SHA256 rather than a bare digest. SHA-256 is built to be fast,
+  /// which is the wrong property here: anyone who obtains the database can try
+  /// billions of guesses a second against a fast hash, and this app's minimum
+  /// password is six characters. Stretching is what makes those guesses cost
+  /// something.
+  ///
+  /// The result carries its own parameters — `pbkdf2$<iterations>$<hex>` — so
+  /// the work factor can be raised later without stranding the rows written
+  /// today, and so [_verify] can tell the formats apart.
   static String _hash(String salt, String password) {
-    return sha256.convert(utf8.encode('$salt$password')).toString();
+    final key = _pbkdf2(salt, password, _pbkdf2Iterations);
+    final hex = key.map((b) => b.toRadixString(16).padLeft(2, '0')).join();
+    return 'pbkdf2\$$_pbkdf2Iterations\$$hex';
+  }
+
+  /// Checks a secret against what is stored, in either format.
+  ///
+  /// Accounts made before stretching arrived hold a bare SHA-256 digest, and
+  /// have to keep working — locking people out of their own records to improve
+  /// a hash would be a worse outcome than the weak hash. [login] upgrades them
+  /// in passing.
+  static bool _verify(String salt, String secret, String stored) {
+    if (!stored.startsWith('pbkdf2\$')) {
+      // Legacy: sha256(salt + secret), hex.
+      return sha256.convert(utf8.encode('$salt$secret')).toString() == stored;
+    }
+    final parts = stored.split('\$');
+    if (parts.length != 3) return false;
+    final iterations = int.tryParse(parts[1]);
+    if (iterations == null || iterations < 1) return false;
+
+    final key = _pbkdf2(salt, secret, iterations);
+    final hex = key.map((b) => b.toRadixString(16).padLeft(2, '0')).join();
+    return _constantTimeEquals(hex, parts[2]);
+  }
+
+  /// True when [stored] predates stretching and is worth rewriting.
+  static bool _needsRehash(String stored) => !stored.startsWith('pbkdf2\$');
+
+  /// PBKDF2-HMAC-SHA256, one 32-byte block.
+  ///
+  /// Written out rather than pulled from a package: it is twenty lines against
+  /// a specification that has not moved since 2000, and the last dependency
+  /// added to this app arrived with a telemetry uploader three levels down.
+  static List<int> _pbkdf2(String salt, String secret, int iterations) {
+    final mac = Hmac(sha256, utf8.encode(secret));
+    // Block index 1, big-endian, appended to the salt as the spec requires.
+    final seed = <int>[...utf8.encode(salt), 0, 0, 0, 1];
+
+    var previous = mac.convert(seed).bytes;
+    final accumulator = List<int>.from(previous);
+    for (var i = 1; i < iterations; i++) {
+      previous = mac.convert(previous).bytes;
+      for (var j = 0; j < accumulator.length; j++) {
+        accumulator[j] ^= previous[j];
+      }
+    }
+    return accumulator;
+  }
+
+  /// Compares without returning early on the first differing character.
+  ///
+  /// The timing signal is not realistically exploitable on a local database —
+  /// but the whole comparison is one line either way, and a habit of leaking
+  /// nothing is cheaper to keep than to acquire.
+  static bool _constantTimeEquals(String a, String b) {
+    if (a.length != b.length) return false;
+    var diff = 0;
+    for (var i = 0; i < a.length; i++) {
+      diff |= a.codeUnitAt(i) ^ b.codeUnitAt(i);
+    }
+    return diff == 0;
   }
 }

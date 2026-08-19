@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Android 12 and newer read these instead of android:allowBackup.
+
+  Everything is excluded, for both paths, because the app tells people on its
+  own Backup screen that nothing leaves the phone. Auto Backup would have
+  copied sellora.db - every sale, every customer's name and number, and the
+  password and recovery hashes - into the owner's Google Drive, which is a
+  server, and would have made that sentence untrue.
+
+  cloud-backup covers Google Drive; device-transfer covers phone-to-phone
+  setup. Both are off: the app's own export is the way records move, and it is
+  the one the owner starts deliberately.
+-->
+<data-extraction-rules>
+    <cloud-backup>
+        <exclude domain="root" />
+        <exclude domain="file" />
+        <exclude domain="database" />
+        <exclude domain="sharedpref" />
+        <exclude domain="external" />
+    </cloud-backup>
+    <device-transfer>
+        <exclude domain="root" />
+        <exclude domain="file" />
+        <exclude domain="database" />
+        <exclude domain="sharedpref" />
+        <exclude domain="external" />
+    </device-transfer>
+</data-extraction-rules>
