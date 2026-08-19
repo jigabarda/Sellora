@@ -40,6 +40,7 @@ class Product {
     required this.trackStock,
     required this.active,
     required this.createdAt,
+    this.rental = false,
   });
 
   final String id;
@@ -59,6 +60,11 @@ class Product {
   /// Services and made-to-order items have no inventory. Sales of an untracked
   /// product skip the availability check, the decrement, and the ledger row.
   final bool trackStock;
+
+  /// Rented out rather than sold. [price] is then a rate *per day*, and the
+  /// stock that goes out is expected back.
+  final bool rental;
+
   final bool active;
   final DateTime createdAt;
 
@@ -73,6 +79,7 @@ class Product {
         price: (m['price'] as num).toDouble(),
         stock: (m['stock'] as num).toInt(),
         trackStock: ((m['track_stock'] as num?) ?? 1).toInt() == 1,
+        rental: ((m['rental'] as num?) ?? 0).toInt() == 1,
         active: ((m['active'] as num?) ?? 1).toInt() == 1,
         createdAt: DateTime.fromMillisecondsSinceEpoch(m['created_at']! as int),
       );
@@ -88,6 +95,7 @@ class Product {
         'price': price,
         'stock': stock,
         'track_stock': trackStock ? 1 : 0,
+        'rental': rental ? 1 : 0,
         'active': active ? 1 : 0,
         'created_at': createdAt.millisecondsSinceEpoch,
       };
@@ -141,6 +149,8 @@ class SaleLine {
     required this.name,
     required this.qty,
     required this.unitPrice,
+    this.days = 1,
+    this.returnedQty = 0,
   });
 
   final String id;
@@ -150,6 +160,20 @@ class SaleLine {
   final int qty;
   final double unitPrice;
 
+  /// Days rented. One for anything sold outright, so [total] never has to ask
+  /// which kind of line it is.
+  final int days;
+
+  /// How many of [qty] have come back. Above zero only for a rental, and
+  /// allowed to be short of [qty] — nineteen of twenty chairs is a real
+  /// Sunday, and all-or-nothing would make the owner record a lie.
+  final int returnedQty;
+
+  double get total => qty * unitPrice * days;
+
+  /// Still out with the customer.
+  int get outstanding => qty - returnedQty;
+
   factory SaleLine.fromMap(Map<String, Object?> m) => SaleLine(
         id: m['id']! as String,
         saleId: m['sale_id']! as String,
@@ -157,6 +181,8 @@ class SaleLine {
         name: m['name']! as String,
         qty: (m['qty'] as num).toInt(),
         unitPrice: (m['unit_price'] as num).toDouble(),
+        days: ((m['days'] as num?) ?? 1).toInt(),
+        returnedQty: ((m['returned_qty'] as num?) ?? 0).toInt(),
       );
 
   Map<String, Object?> toMap() => {
@@ -166,6 +192,8 @@ class SaleLine {
         'name': name,
         'qty': qty,
         'unit_price': unitPrice,
+        'days': days,
+        'returned_qty': returnedQty,
       };
 }
 
@@ -324,4 +352,60 @@ class Refund {
         'restock': restock ? 1 : 0,
         'at': at.millisecondsSinceEpoch,
       };
+}
+
+/// A rented line that has not fully come back.
+///
+/// Flattened across sale, line, product and customer because that is how it is
+/// read — one row per thing still out with someone — and assembling it in the
+/// query keeps the screen from issuing four more.
+class OutstandingRental {
+  const OutstandingRental({
+    required this.lineId,
+    required this.saleId,
+    required this.productId,
+    required this.productName,
+    required this.qty,
+    required this.returnedQty,
+    required this.days,
+    required this.unitPrice,
+    required this.customerName,
+    required this.rentedAt,
+  });
+
+  final String lineId;
+  final String saleId;
+  final String productId;
+  final String productName;
+  final int qty;
+  final int returnedQty;
+  final int days;
+  final double unitPrice;
+
+  /// Null for a walk-in. Chasing those up is the owner's problem, not the
+  /// app's, but the row still has to appear.
+  final String? customerName;
+
+  final DateTime rentedAt;
+
+  int get outstanding => qty - returnedQty;
+
+  /// When the agreed period runs out.
+  ///
+  /// Calendar arithmetic rather than `add(Duration(days:))`, so three days from
+  /// the last Friday of a month lands on the Monday and not on the 34th. The
+  /// seconds are carried through deliberately: dropping them made a three-day
+  /// rental measure as two days and twenty-three hours, which `inDays` then
+  /// truncated to two.
+  DateTime get dueAt => DateTime(
+        rentedAt.year,
+        rentedAt.month,
+        rentedAt.day + days,
+        rentedAt.hour,
+        rentedAt.minute,
+        rentedAt.second,
+        rentedAt.millisecond,
+      );
+
+  bool isOverdue(DateTime now) => now.isAfter(dueAt);
 }

@@ -7,7 +7,7 @@ class SelloraDatabase {
   SelloraDatabase._();
 
   static const _fileName = 'sellora.db';
-  static const _version = 5;
+  static const _version = 6;
 
   static Future<Database> open() async {
     final dir = await getApplicationDocumentsDirectory();
@@ -83,6 +83,41 @@ class SelloraDatabase {
     if (oldVersion >= 3 && oldVersion < 5) {
       await _replaceUserEmailsWithUsernames(db);
     }
+    // Rentals. Defaults are chosen so every row already in the database is
+    // correct without being touched: nothing was a rental, everything was for
+    // one day, and nothing has come back because nothing went out.
+    if (oldVersion < 6) {
+      await _addColumn(db, 'products', 'rental', 'INTEGER NOT NULL DEFAULT 0');
+      await _addColumn(db, 'sale_lines', 'days', 'INTEGER NOT NULL DEFAULT 1');
+      await _addColumn(
+          db, 'sale_lines', 'returned_qty', 'INTEGER NOT NULL DEFAULT 0');
+    }
+  }
+
+  /// Adds a column unless the table already has it, or does not exist at all.
+  ///
+  /// The steps above guard themselves with version ranges, which works but has
+  /// to reason about which earlier step already created the table with the
+  /// column in it — that is the sort of bookkeeping that goes wrong quietly
+  /// three releases later. Asking the database what it actually has is both
+  /// shorter and idempotent: re-running a step is a no-op rather than a
+  /// duplicate-column failure.
+  static Future<void> _addColumn(
+    Database db,
+    String table,
+    String column,
+    String definition,
+  ) async {
+    final tables = await db.rawQuery(
+      "SELECT name FROM sqlite_master WHERE type = 'table' AND name = ?",
+      [table],
+    );
+    if (tables.isEmpty) return;
+
+    final columns = await db.rawQuery('PRAGMA table_info($table)');
+    if (columns.any((c) => c['name'] == column)) return;
+
+    await db.execute('ALTER TABLE $table ADD COLUMN $column $definition');
   }
 
   /// Rebuilds `users` so accounts are identified by a username instead of an
@@ -219,6 +254,9 @@ CREATE TABLE products (
   price REAL NOT NULL,
   stock INTEGER NOT NULL DEFAULT 0,
   track_stock INTEGER NOT NULL DEFAULT 1,
+  -- Rented out rather than sold. `price` is then a rate per day, and the
+  -- stock that goes out is expected back: see sale_lines.returned_qty.
+  rental INTEGER NOT NULL DEFAULT 0,
   active INTEGER NOT NULL DEFAULT 1,
   created_at INTEGER NOT NULL,
   FOREIGN KEY (business_id) REFERENCES businesses(id) ON DELETE CASCADE,
@@ -259,6 +297,13 @@ CREATE TABLE sale_lines (
   name TEXT NOT NULL,
   qty INTEGER NOT NULL,
   unit_price REAL NOT NULL,
+  -- How long it was rented for. 1 for anything sold outright, so the line
+  -- total is always qty * unit_price * days and nothing has to branch.
+  days INTEGER NOT NULL DEFAULT 1,
+  -- How many of `qty` have come back. Only ever above zero for a rental, and
+  -- allowed to be less than `qty`: nineteen of twenty chairs is a real
+  -- Sunday, and forcing it to be all-or-nothing would make the owner lie.
+  returned_qty INTEGER NOT NULL DEFAULT 0,
   FOREIGN KEY (sale_id) REFERENCES sales(id) ON DELETE CASCADE,
   FOREIGN KEY (product_id) REFERENCES products(id) ON DELETE RESTRICT
 );

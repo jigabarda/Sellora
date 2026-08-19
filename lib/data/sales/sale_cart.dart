@@ -2,12 +2,19 @@ import '../models/entities.dart';
 
 /// One product in a cart, and how many of it.
 class CartLine {
-  CartLine({required this.product, required this.qty});
+  CartLine({required this.product, required this.qty, this.days = 1});
 
   final Product product;
   int qty;
 
-  double get subtotal => qty * product.price;
+  /// Days rented. Always 1 for something sold outright, so the subtotal below
+  /// is one expression rather than a branch — a sold line is simply a rental
+  /// of one day, arithmetically.
+  int days;
+
+  bool get isRental => product.rental;
+
+  double get subtotal => qty * product.price * days;
 
   /// Null means no ceiling: the product does not track stock.
   int? get max => product.trackStock ? product.stock : null;
@@ -49,7 +56,7 @@ class SaleCart {
   ///
   /// Returns false when nothing could be added because the shelf is already
   /// exhausted — the caller can then say so rather than silently doing nothing.
-  bool add(Product product, {int qty = 1}) {
+  bool add(Product product, {int qty = 1, int? days}) {
     if (qty < 1) return false;
 
     final max = product.trackStock ? product.stock : null;
@@ -58,16 +65,29 @@ class SaleCart {
     final existing = lines.indexWhere((l) => l.product.id == product.id);
     if (existing >= 0) {
       final line = lines[existing];
+      if (days != null) line.days = days < 1 ? 1 : days;
       if (line.atMax) return false;
       line.qty = max == null ? line.qty + qty : (line.qty + qty).clamp(1, max);
       return true;
     }
 
-    lines.add(
-      CartLine(product: product, qty: max == null ? qty : qty.clamp(1, max)),
-    );
+    lines.add(CartLine(
+      product: product,
+      qty: max == null ? qty : qty.clamp(1, max),
+      // A rental with no period stated is one day, not zero: the customer has
+      // it today whatever else happens.
+      days: days == null || days < 1 ? 1 : days,
+    ));
     return true;
   }
+
+  /// Days apply per line, not per sale: chairs for three days and a table for
+  /// one is an ordinary booking, and forcing one period on the whole cart
+  /// would make the owner split it into two transactions.
+  void setDays(CartLine line, int days) => line.days = days < 1 ? 1 : days;
+
+  /// True when anything in the cart goes out expecting to come back.
+  bool get hasRental => lines.any((l) => l.isRental);
 
   /// Sets an exact quantity, clamped to the shelf. Zero removes the row, so a
   /// caller can wire "set to 0" to delete without a separate branch.
@@ -89,13 +109,14 @@ class SaleCart {
   /// The unit price is read off the product now rather than remembered from
   /// when it was added, so a cart left open across a price change records what
   /// the product costs today.
-  List<({String productId, String name, int qty, double unitPrice})>
+  List<({String productId, String name, int qty, double unitPrice, int days})>
       toSaleLines() => lines
           .map((l) => (
                 productId: l.product.id,
                 name: l.product.name,
                 qty: l.qty,
                 unitPrice: l.product.price,
+                days: l.days,
               ))
           .toList(growable: false);
 }

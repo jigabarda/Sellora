@@ -195,6 +195,9 @@ class _NotebookCaptureScreenState extends ConsumerState<NotebookCaptureScreen> {
               name: product.name,
               qty: line.quantity,
               unitPrice: product.price,
+              // A page of the notebook records what was sold, not what was
+              // lent; nothing on it is a rental.
+              days: 1,
             ),
           ],
         );
