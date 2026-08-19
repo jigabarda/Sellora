@@ -303,6 +303,81 @@ void main() {
     expect(name, 'sellora-backup-2026-08-19-1031.json');
   });
 
+  test('a rental and its discount survive the round trip', () async {
+    // The export reads whole rows and the restore writes them back whole, so
+    // this is really asking whether anything in between drops a column it has
+    // never heard of. A backup that silently loses the days turns a P600
+    // booking into P200 on the new phone.
+    await _seed(db, userId: 'usr_1', username: 'owner');
+    final bizId = 'biz_a_usr_1';
+
+    await db.insert('products', {
+      'id': 'prd_chair',
+      'business_id': bizId,
+      'category_id': null,
+      'name': 'Chair',
+      'sku': '',
+      'price': 10.0,
+      'stock': 50,
+      'rental': 1,
+      'active': 1,
+      'created_at': 1,
+    });
+    await db.insert('sales', {
+      'id': 'sale_rent',
+      'business_id': bizId,
+      'customer_id': null,
+      'total': 500.0,
+      'discount': 100.0,
+      'created_at': 2,
+    });
+    await db.insert('sale_lines', {
+      'id': 'lin_rent',
+      'sale_id': 'sale_rent',
+      'product_id': 'prd_chair',
+      'name': 'Chair',
+      'qty': 20,
+      'unit_price': 10.0,
+      'days': 3,
+      'returned_qty': 5,
+      'starts_at': DateTime(2026, 8, 19).millisecondsSinceEpoch,
+    });
+
+    final backup = await service.exportToJson('usr_1');
+    await service.restore(backup);
+
+    final product =
+        (await db.query('products', where: 'id = ?', whereArgs: ['prd_chair']))
+            .single;
+    expect(product['rental'], 1, reason: 'still a rental, not a sale');
+
+    final sale =
+        (await db.query('sales', where: 'id = ?', whereArgs: ['sale_rent']))
+            .single;
+    expect(sale['total'], 500.0);
+    expect(sale['discount'], 100.0);
+
+    final line =
+        (await db.query('sale_lines', where: 'id = ?', whereArgs: ['lin_rent']))
+            .single;
+    expect(line['days'], 3, reason: 'P600 of chairs, not P200');
+    expect(line['returned_qty'], 5, reason: 'fifteen are still out');
+    expect(line['starts_at'], DateTime(2026, 8, 19).millisecondsSinceEpoch);
+  });
+
+  test('the file stamps the schema version the app actually uses', () async {
+    // The guard that refuses a too-new backup compares against this number,
+    // so understating it lets an older build accept a file full of columns it
+    // does not have — surfacing as a raw SQLite error mid-restore instead of
+    // "update the app first". It was hand-kept at 4 while the database had
+    // moved to 8.
+    await _seed(db, userId: 'usr_1', username: 'owner');
+    final envelope =
+        jsonDecode(await service.exportToJson('usr_1')) as Map<String, Object?>;
+
+    expect(envelope['schemaVersion'], SelloraDatabase.schemaVersion);
+  });
+
   test('refuses when another account already owns the username', () async {
     await _seed(db, userId: 'usr_1', username: 'owner');
     final backup = await service.exportToJson('usr_1');

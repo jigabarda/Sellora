@@ -7,7 +7,14 @@ class SelloraDatabase {
   SelloraDatabase._();
 
   static const _fileName = 'sellora.db';
-  static const _version = 8;
+
+  /// The schema this build creates and migrates to.
+  ///
+  /// Public because the backup format has to stamp it into every file, and a
+  /// private copy of the number is exactly how the two drifted apart before:
+  /// a comment asked whoever bumped one to bump the other, and eventually
+  /// nobody did.
+  static const schemaVersion = 8;
 
   static Future<Database> open() async {
     final dir = await getApplicationDocumentsDirectory();
@@ -22,7 +29,7 @@ class SelloraDatabase {
   /// safe, because the pragma sequence below is the entire safety mechanism.
   static OpenDatabaseOptions openOptions() {
     return OpenDatabaseOptions(
-      version: _version,
+      version: schemaVersion,
       // Foreign keys are deliberately OFF here and switched back ON in
       // `onOpen`.
       //
@@ -46,7 +53,7 @@ class SelloraDatabase {
     );
   }
 
-  /// Brings a database created by an older release up to [_version].
+  /// Brings a database created by an older release up to [schemaVersion].
   ///
   /// Public so tests can drive it against a hand-built old schema; there is no
   /// other way to exercise an upgrade path without an on-device file.
