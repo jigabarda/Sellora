@@ -337,6 +337,9 @@ class _ProductTile extends StatelessWidget {
               Row(
                 crossAxisAlignment: CrossAxisAlignment.baseline,
                 textBaseline: TextBaseline.alphabetic,
+                // Price hard left, stock hard right, so the two numbers can
+                // never be mistaken for one another.
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
                   Flexible(
                     child: Text(
@@ -351,13 +354,18 @@ class _ProductTile extends StatelessWidget {
                       ),
                     ),
                   ),
-                  if (product.trackStock) ...[
-                    Gap.w8,
+                  if (product.trackStock)
                     Flexible(
                       child: Text(
-                        low ? '${product.stock} left' : '${product.stock}',
+                        // Always "left", never a bare number. Beside a peso
+                        // amount a lone figure reads as a second price, and the
+                        // word costs four characters. Only the weight changes
+                        // when the shelf is running down — the label is a fact,
+                        // the emphasis is the warning.
+                        '${product.stock} left',
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
+                        textAlign: TextAlign.right,
                         style: context.text.bodySmall?.copyWith(
                           color: low && !selected ? t.warning : quiet,
                           fontWeight:
@@ -365,7 +373,6 @@ class _ProductTile extends StatelessWidget {
                         ),
                       ),
                     ),
-                  ],
                 ],
               ),
             ],
