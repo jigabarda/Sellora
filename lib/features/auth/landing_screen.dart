@@ -239,7 +239,7 @@ class _Slide extends StatelessWidget {
         // in whatever was left, which is what kept leaving a band of nothing
         // between them. Leading with the artwork puts the thing worth looking
         // at first and lets the words close the screen off above the button.
-        
+
         Expanded(
           child: Center(
             // Tight width, loose height: the artwork scales up to the full
@@ -594,8 +594,7 @@ class _StockArtwork extends StatelessWidget {
           child: _MockCard(
             child: Row(
               children: [
-                IconTile(
-                    icon: Icons.trending_down, tone: t.danger, size: 30),
+                IconTile(icon: Icons.trending_down, tone: t.danger, size: 30),
                 Gap.w12,
                 Expanded(
                   child: Column(

@@ -1,5 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:sellora_mobile/data/auth/auth_controller.dart';
+import 'package:sellora_mobile/data/backup/backup_service.dart';
 import 'package:sellora_mobile/data/db/sellora_database.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
@@ -31,6 +32,63 @@ void main() {
   });
 
   tearDown(() async => db.close());
+
+  group('recovering an account from a backup', () {
+    test('a restored account can be signed into on a phone that has none',
+        () async {
+      // The whole scenario: the old phone is gone, this one has never seen
+      // the account, and the only thing left is the file.
+      final backup = await BackupService(db).exportToJson(auth.state.userId!);
+      await auth.logout();
+      await db.delete('users');
+      expect(await db.query('users'), isEmpty, reason: 'a fresh phone');
+
+      final restoredId = await BackupService(db).restore(backup);
+      await auth.adoptRestoredSession(restoredId);
+
+      expect(auth.isLoggedIn, isTrue);
+      expect((await auth.currentUser())!.username, 'owner');
+    });
+
+    test('the password from the old phone still works after restoring',
+        () async {
+      // The account travels inside the file, salt and hash included, so the
+      // password someone has been typing for a year keeps working. Losing the
+      // phone must not mean losing the credentials with it.
+      final backup = await BackupService(db).exportToJson(auth.state.userId!);
+      await auth.logout();
+      await db.delete('users');
+
+      await BackupService(db).restore(backup);
+      await auth.login(username: 'owner', password: 'secret123');
+
+      expect(auth.isLoggedIn, isTrue);
+    });
+
+    test('adopting a session for an account that is not there is refused',
+        () async {
+      // Otherwise the app would sit signed in as nobody, which every screen
+      // downstream reads as "logged in" and then fails to find anything.
+      await expectLater(
+        auth.adoptRestoredSession('usr_does_not_exist'),
+        throwsA(isA<AuthException>()),
+      );
+      expect(auth.state.userId, isNot('usr_does_not_exist'));
+    });
+
+    test('the adopted session survives a restart', () async {
+      final id = auth.state.userId!;
+      await auth.logout();
+      await auth.adoptRestoredSession(id);
+
+      // A second controller over the same prefs is what a relaunch looks like.
+      final relaunched =
+          AuthController(db, await SharedPreferences.getInstance());
+      await relaunched.restoreSession();
+
+      expect(relaunched.state.userId, id);
+    });
+  });
 
   test('currentUser returns the signed-in account without credential fields',
       () async {
