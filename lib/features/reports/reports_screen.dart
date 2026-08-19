@@ -152,6 +152,12 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
                     to: _to,
                   ),
                   Gap.h16,
+                  Padding(
+                    padding:
+                        const EdgeInsets.only(left: Gap.xs, bottom: Gap.sm),
+                    child: Text('Export as Excel',
+                        style: context.text.labelSmall),
+                  ),
                   FilledButton.icon(
                     onPressed: _exporting ? null : _saveToDevice,
                     icon: _exporting
@@ -173,10 +179,9 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
                   ),
                   Gap.h8,
                   Text(
-                    'An Excel file of this period — summary, every sale, '
-                    'products and expenses. Saving puts it in Downloads; '
-                    'sending hands it to an app you pick. It never leaves the '
-                    'phone on its own.',
+                    'Summary, every sale, products and expenses for this '
+                    'period. Saving puts it in Downloads; sending hands it to '
+                    'an app you pick. It never leaves the phone on its own.',
                     style: context.text.bodySmall,
                     textAlign: TextAlign.center,
                   ),
