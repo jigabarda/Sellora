@@ -48,7 +48,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                   mainAxisSize: MainAxisSize.min,
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
-                    const SelloraWordmark(size: 26),
+                    const SelloraLockup(size: 24),
                     Gap.h24,
                     Text('Welcome back', style: context.text.headlineMedium),
                     Gap.h4,

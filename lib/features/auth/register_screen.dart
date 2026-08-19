@@ -52,7 +52,7 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
                   mainAxisSize: MainAxisSize.min,
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
-                    const SelloraWordmark(size: 26),
+                    const SelloraLockup(size: 24),
                     Gap.h24,
                     Text('Create your account',
                         style: context.text.headlineMedium),

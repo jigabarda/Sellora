@@ -32,6 +32,97 @@ class SelloraWordmark extends StatelessWidget {
   }
 }
 
+/// The Sellora mark: a gradient squircle carrying an S.
+///
+/// The letterform is the brand typeface's own S rather than a hand-built path,
+/// so the mark and the wordmark beside it are cut from the same shapes. A
+/// bespoke curve would drift away from the type the moment either changed.
+///
+/// Both gradient stops are derived from the live accent, so a user who rebrands
+/// the app gets a mark in their own colour instead of a stale purple tile.
+class SelloraLogo extends StatelessWidget {
+  const SelloraLogo({super.key, this.size = 40, this.shadow = true});
+
+  final double size;
+
+  /// Off in dense places — an app bar row does not need the lift.
+  final bool shadow;
+
+  @override
+  Widget build(BuildContext context) {
+    final t = context.t;
+    final base = HSLColor.fromColor(t.accent);
+    final top = base
+        .withLightness((base.lightness + 0.10).clamp(0.0, 1.0))
+        .withSaturation((base.saturation - 0.05).clamp(0.0, 1.0))
+        .toColor();
+    final bottom =
+        base.withLightness((base.lightness - 0.16).clamp(0.0, 1.0)).toColor();
+
+    return Container(
+      width: size,
+      height: size,
+      decoration: BoxDecoration(
+        // 28% of the side is the squircle proportion Android and iOS both
+        // settled on; anything rounder reads as a button, anything squarer as
+        // a placeholder.
+        borderRadius: BorderRadius.circular(size * 0.28),
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [top, bottom],
+        ),
+        boxShadow: shadow
+            ? [
+                BoxShadow(
+                  color: t.accent.withValues(alpha: 0.28),
+                  blurRadius: size * 0.30,
+                  offset: Offset(0, size * 0.10),
+                ),
+              ]
+            : null,
+      ),
+      alignment: Alignment.center,
+      child: Transform.translate(
+        // The S sits a hair high in its em box. Optical centring, not metric.
+        offset: Offset(0, -size * 0.015),
+        child: Text(
+          'S',
+          style: TextStyle(
+            fontFamily: kBrandFontFamily,
+            fontSize: size * 0.58,
+            fontWeight: FontWeight.w800,
+            letterSpacing: 0,
+            height: 1.0,
+            color: t.onAccent,
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Mark and wordmark together, for headers and the logged-out screens.
+class SelloraLockup extends StatelessWidget {
+  const SelloraLockup({super.key, this.size = 22, this.shadow = true});
+
+  /// Wordmark size; the mark is scaled from it so the pair always sits right.
+  final double size;
+  final bool shadow;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        SelloraLogo(size: size * 1.32, shadow: shadow),
+        SizedBox(width: size * 0.40),
+        SelloraWordmark(size: size),
+      ],
+    );
+  }
+}
+
 /// A rounded square holding an icon over a tint of its own colour.
 ///
 /// This is where most of the app's colour lives. Tinting the background

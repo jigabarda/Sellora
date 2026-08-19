@@ -215,7 +215,7 @@ class _BusinessDrawer extends ConsumerWidget {
           children: [
             const Padding(
               padding: EdgeInsets.fromLTRB(Gap.lg, Gap.lg, Gap.lg, Gap.md),
-              child: SelloraWordmark(size: 22),
+              child: SelloraLockup(size: 21, shadow: false),
             ),
             Padding(
               padding: const EdgeInsets.fromLTRB(Gap.md, 0, Gap.md, Gap.lg),
