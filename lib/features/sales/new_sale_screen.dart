@@ -7,7 +7,9 @@ import '../../core/money.dart';
 import '../../core/sellora_ui.dart';
 import '../../data/models/entities.dart';
 import '../../data/quick_entry/quick_command.dart';
+import '../../data/sales/sale_cart.dart';
 import '../../providers.dart';
+import 'quantity_sheet.dart';
 
 class NewSaleScreen extends ConsumerStatefulWidget {
   const NewSaleScreen({super.key, required this.businessId, this.prefill});
@@ -22,20 +24,8 @@ class NewSaleScreen extends ConsumerStatefulWidget {
   ConsumerState<NewSaleScreen> createState() => _NewSaleScreenState();
 }
 
-class _CartLine {
-  _CartLine({required this.product, required this.qty});
-
-  final Product product;
-  int qty;
-
-  double get subtotal => qty * product.price;
-
-  /// Null means no ceiling: the product does not track stock.
-  int? get max => product.trackStock ? product.stock : null;
-}
-
 class _NewSaleScreenState extends ConsumerState<NewSaleScreen> {
-  final List<_CartLine> _cart = [];
+  final _cart = SaleCart();
   String? _customerId;
   bool _saving = false;
 
@@ -44,18 +34,15 @@ class _NewSaleScreenState extends ConsumerState<NewSaleScreen> {
     super.initState();
     final prefill = widget.prefill;
     if (prefill == null) return;
-    // Clamped for the same reason the picker clamps: a tracked product cannot
-    // be sold beyond what is on the shelf, and a parsed quantity is a guess.
-    final max = prefill.product.trackStock ? prefill.product.stock : null;
-    final qty = max == null ? prefill.quantity : prefill.quantity.clamp(1, max);
-    if (max == null || max > 0) {
-      _cart.add(_CartLine(product: prefill.product, qty: qty));
-    }
+    // The cart clamps for the same reason the picker does: a tracked product
+    // cannot be sold beyond what is on the shelf, and a parsed quantity is a
+    // guess.
+    _cart.add(prefill.product, qty: prefill.quantity);
     _customerId = prefill.customer?.id;
   }
 
-  double get _total => _cart.fold(0.0, (sum, l) => sum + l.subtotal);
-  int get _itemCount => _cart.fold(0, (sum, l) => sum + l.qty);
+  double get _total => _cart.total;
+  int get _itemCount => _cart.itemCount;
 
   @override
   Widget build(BuildContext context) {
@@ -105,15 +92,16 @@ class _NewSaleScreenState extends ConsumerState<NewSaleScreen> {
                             style: context.text.labelSmall,
                           ),
                         ),
-                        ..._cart.asMap().entries.map(
-                              (e) => Padding(
+                        ..._cart.lines.map(
+                              (line) => Padding(
                                 padding: const EdgeInsets.only(bottom: Gap.sm),
                                 child: _CartCard(
-                                  line: e.value,
-                                  onDecrement: () => _changeQty(e.value, -1),
-                                  onIncrement: () => _changeQty(e.value, 1),
+                                  line: line,
+                                  onDecrement: () => _changeQty(line, -1),
+                                  onIncrement: () => _changeQty(line, 1),
                                   onRemove: () =>
-                                      setState(() => _cart.removeAt(e.key)),
+                                      setState(() => _cart.remove(line)),
+                                  onEditQty: () => _editQty(line),
                                 ),
                               ),
                             ),
@@ -192,12 +180,23 @@ class _NewSaleScreenState extends ConsumerState<NewSaleScreen> {
     );
   }
 
-  void _changeQty(_CartLine line, int delta) {
+  Future<void> _editQty(CartLine line) async {
+    final chosen = await askQuantity(
+      context,
+      productName: line.product.name,
+      current: line.qty,
+      max: line.max,
+    );
+    if (chosen == null || !mounted) return;
+    setState(() => _cart.setQuantity(line, chosen));
+  }
+
+  void _changeQty(CartLine line, int delta) {
     final next = line.qty + delta;
     if (next < 1) return;
     if (line.max != null && next > line.max!) return;
     HapticFeedback.selectionClick();
-    setState(() => line.qty = next);
+    setState(() => _cart.setQuantity(line, next));
   }
 
   Future<void> _clearCart() async {
@@ -236,15 +235,7 @@ class _NewSaleScreenState extends ConsumerState<NewSaleScreen> {
     if (picked == null || !mounted) return;
 
     HapticFeedback.selectionClick();
-    setState(() {
-      final existing = _cart.indexWhere((c) => c.product.id == picked.id);
-      if (existing >= 0) {
-        final line = _cart[existing];
-        if (line.max == null || line.qty < line.max!) line.qty++;
-      } else {
-        _cart.add(_CartLine(product: picked, qty: 1));
-      }
-    });
+    setState(() => _cart.add(picked));
   }
 
   Future<void> _submit() async {
@@ -254,14 +245,7 @@ class _NewSaleScreenState extends ConsumerState<NewSaleScreen> {
       await ref.read(saleRepositoryProvider).recordSale(
             businessId: widget.businessId,
             customerId: _customerId,
-            lines: _cart
-                .map((c) => (
-                      productId: c.product.id,
-                      name: c.product.name,
-                      qty: c.qty,
-                      unitPrice: c.product.price,
-                    ))
-                .toList(growable: false),
+            lines: _cart.toSaleLines(),
           );
 
       ref.invalidate(salesProvider(widget.businessId));
@@ -289,12 +273,14 @@ class _CartCard extends StatelessWidget {
     required this.onDecrement,
     required this.onIncrement,
     required this.onRemove,
+    required this.onEditQty,
   });
 
-  final _CartLine line;
+  final CartLine line;
   final VoidCallback onDecrement;
   final VoidCallback onIncrement;
   final VoidCallback onRemove;
+  final VoidCallback onEditQty;
 
   @override
   Widget build(BuildContext context) {
@@ -341,12 +327,19 @@ class _CartCard extends StatelessWidget {
                   onPressed: line.qty > 1 ? onDecrement : onRemove,
                   danger: line.qty == 1,
                 ),
-                SizedBox(
-                  width: 28,
-                  child: Text(
-                    '${line.qty}',
-                    textAlign: TextAlign.center,
-                    style: context.text.titleSmall,
+                // Tappable: the stepper is fine for two or three and useless
+                // for fifty, which is an ordinary order here.
+                InkWell(
+                  onTap: onEditQty,
+                  borderRadius: BorderRadius.circular(Radii.sm),
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: Gap.sm, vertical: 4),
+                    child: Text(
+                      '${line.qty}',
+                      textAlign: TextAlign.center,
+                      style: context.text.titleSmall,
+                    ),
                   ),
                 ),
                 _StepButton(
